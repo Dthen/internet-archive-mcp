@@ -60,7 +60,7 @@ Add to `claude_desktop_config.json`:
 | `get_item_metadata` | `identifier`, `include_files=False` | Full metadata block (title, creator, description, subjects, server info) |
 | `list_item_files` | `identifier`, `format_filter?` | List of file dicts (name, format, size, technical metadata) |
 | `get_item_reviews` | `identifier` | List of review objects (reviewer, stars, title, body) |
-| `wayback_snapshots` | `url`, `match_type="exact"`, `from_year?`, `to_year?`, `limit=25`, `filter_expr?`, `collapse?` | List of CDX snapshot records (timestamp, URL, MIME, status, digest) |
+| `wayback_snapshots` | `url`, `match_type="exact"`, `from_year?`, `to_year?`, `limit=25`, `filter_expr?`, `collapse?`, `fields?`, `page?`, `show_resume_key?`, `resume_key?`, `newest?`, `fast_latest?` | List of CDX snapshot records (timestamp, URL, MIME, status, digest) |
 | `wayback_availability` | `url` | Closest available snapshot timestamp and URL |
 | `wayback_fetch` | `url`, `timestamp?`, `raw=True`, `char_limit=50000` | Archived page content (raw by default, no toolbar) |
 
@@ -71,7 +71,7 @@ Add to `claude_desktop_config.json`:
 | `browse_collection` | `collection`, `rows=20`, `page=1`, `sort?` | Paginated items in a collection (sorted by downloads desc) |
 | `get_collection_info` | `identifier` | Collection metadata with item count; notes if not a collection |
 | `get_item_thumbnail` | `identifier` | Thumbnail image URL (usable in markdown) |
-| `search_archive_deep` | `query`, `fields?`, `sorts?`, `count=100`, `cursor?` | Cursor-paged results for unlimited deep pagination |
+| `search_archive_deep` | `query`, `fields?`, `sorts?`, `count=100`, `cursor?`, `total_only?` | Cursor-paged results for unlimited deep pagination |
 
 ### Tier 3 — Auth-gated tools
 
@@ -123,9 +123,11 @@ internet-archive-mcp/
 │   ├── client.py      # Async httpx client — all API logic
 │   └── server.py      # FastMCP tool definitions (thin wrappers)
 ├── tests/
+│   ├── __init__.py
 │   ├── conftest.py
 │   ├── test_client.py
 │   ├── test_qa_fixes.py
+│   ├── test_qa_round2.py
 │   ├── test_server.py
 │   └── test_tools.py
 ├── RESEARCH.md        # API research findings (tested with curl)

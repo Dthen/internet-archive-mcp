@@ -219,9 +219,13 @@ class ArchiveClient:
         num_found = response.get("numFound", 0)
         start = response.get("start", 0)
         docs = response.get("docs", [])
+        if not isinstance(docs, list):
+            docs = []
 
         # Trim fav-* entries from collection arrays.
         for doc in docs:
+            if not isinstance(doc, dict):
+                continue
             if "collection" in doc and isinstance(doc["collection"], list):
                 doc["collection"] = [
                     c for c in doc["collection"] if not c.startswith("fav-")
@@ -289,6 +293,9 @@ class ArchiveClient:
         resp.raise_for_status()
         data = resp.json()
 
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected API response format")
+
         result: dict[str, Any] = {
             "items": data.get("items", []),
             "total": data.get("total", 0),
@@ -337,12 +344,16 @@ class ArchiveClient:
         """List files for an item, optionally filtered by format (case-insensitive)."""
         data = await self.get_item_metadata(identifier, include_files=True)
         files = data.get("files", [])
+        if not isinstance(files, list):
+            files = []
         if format_filter:
             fmt_lower = format_filter.lower()
             files = [
                 f for f in files
-                if f.get("format", "").lower() == fmt_lower
+                if isinstance(f, dict) and f.get("format", "").lower() == fmt_lower
             ]
+        else:
+            files = [f for f in files if isinstance(f, dict)]
         for f in files:
             name = f.get("name", "")
             if name:
@@ -352,7 +363,10 @@ class ArchiveClient:
     async def get_item_reviews(self, identifier: str) -> list[dict]:
         """Get reviews for an item. Returns [] if no reviews (absent key or null)."""
         data = await self.get_item_metadata(identifier, include_files=False)
-        return data.get("reviews") or []
+        reviews = data.get("reviews") or []
+        if not isinstance(reviews, list):
+            reviews = []
+        return reviews
 
     # -- Collection methods (Task 5) -------------------------------------------
 
@@ -380,10 +394,13 @@ class ArchiveClient:
     async def get_collection_info(self, identifier: str) -> dict:
         """Get metadata for a collection item. Adds _note if not mediatype=collection."""
         data = await self.get_item_metadata(identifier, include_files=False)
-        if data.get("metadata", {}).get("mediatype") != "collection":
+        meta = data.get("metadata", {})
+        if not isinstance(meta, dict):
+            meta = {}
+        if meta.get("mediatype") != "collection":
             data["_note"] = (
                 f"Item '{identifier}' has mediatype "
-                f"'{data.get('metadata', {}).get('mediatype', 'unknown')}', "
+                f"'{meta.get('mediatype', 'unknown')}', "
                 f"not 'collection'."
             )
         return data
@@ -515,12 +532,12 @@ class ArchiveClient:
             else:
                 data_rows = rows
 
-            snapshots = [dict(zip(headers, row)) for row in data_rows if len(row) == len(headers)]
+            snapshots = [dict(zip(headers, row)) for row in data_rows if isinstance(row, list) and len(row) == len(headers)]
             result = {"snapshots": snapshots, "resume_key": parsed_resume_key}
             self._set_cached(cdx_cache_key, result)
             return result
 
-        result_list = [dict(zip(headers, row)) for row in rows if len(row) == len(headers)]
+        result_list = [dict(zip(headers, row)) for row in rows if isinstance(row, list) and len(row) == len(headers)]
         self._set_cached(cdx_cache_key, result_list)
         return result_list
 
@@ -537,6 +554,8 @@ class ArchiveClient:
         )
         resp.raise_for_status()
         data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected API response format")
         self._set_cached(cache_key, data)
         return data
 
@@ -585,7 +604,12 @@ class ArchiveClient:
         content_length = len(content)
 
         # Cache full content; truncate on read so different char_limits share entry.
-        self._set_cached(cache_key, {"content": content, "content_length": content_length})
+        # Cap cached content at 2 MB to avoid unbounded memory growth from large
+        # archived pages (e.g. PDFs rendered as text). Content over the cap is
+        # still returned to the caller in full — we just skip caching it.
+        _MAX_CACHE_CONTENT_BYTES = 2 * 1024 * 1024  # 2 MB
+        if content_length <= _MAX_CACHE_CONTENT_BYTES:
+            self._set_cached(cache_key, {"content": content, "content_length": content_length})
 
         truncated = content_length > char_limit
         if truncated:
@@ -631,7 +655,10 @@ class ArchiveClient:
             "POST", f"{WAYBACK_BASE}/save/{url}", headers=headers
         )
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected API response format")
+        return data
 
     async def save_page_status(self, job_id: str) -> dict:
         """Poll the status of a Save Page Now (SPN2) job.
@@ -645,4 +672,7 @@ class ArchiveClient:
             "GET", f"{WAYBACK_BASE}/save/status/{quote(job_id, safe='')}"
         )
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected API response format")
+        return data
