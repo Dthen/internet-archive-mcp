@@ -220,12 +220,17 @@ class ArchiveClient:
 
         total_pages = math.ceil(num_found / rows) if rows > 0 else 0
 
-        result = {
+        result: dict[str, Any] = {
             "numFound": num_found,
             "start": start,
             "docs": docs,
             "total_pages": total_pages,
         }
+        if num_found > 10000:
+            result["_warning"] = (
+                "Sorted results are capped at 10,000 by the API. "
+                "Use search_archive_deep for deeper paging."
+            )
         self._set_cached(cache_key, result)
         return result
 
@@ -237,8 +242,13 @@ class ArchiveClient:
         sorts: list[str] | None = None,
         count: int = 100,
         cursor: str | None = None,
+        total_only: bool = False,
     ) -> dict:
-        """Scraping API cursor-based deep paging. Returns {items, total, count, cursor?}."""
+        """Scraping API cursor-based deep paging. Returns {items, total, count, cursor?}.
+
+        When *total_only* is True the API returns only the total count
+        without any item records — useful for quick cardinality checks.
+        """
         if not query or not query.strip():
             raise ValueError("Search query must not be empty")
         if count < 100:
@@ -254,6 +264,8 @@ class ArchiveClient:
             params.append(("sorts", ",".join(sorts)))
         if cursor:
             params.append(("cursor", cursor))
+        if total_only:
+            params.append(("total_only", "true"))
 
         resp = await self._request(
             "GET", f"{IA_BASE}/services/search/v1/scrape", params=params
@@ -310,6 +322,8 @@ class ArchiveClient:
                 f for f in files
                 if f.get("format", "").lower() == fmt_lower
             ]
+        for f in files:
+            f["download_url"] = f"{IA_BASE}/download/{identifier}/{f['name']}"
         return files
 
     async def get_item_reviews(self, identifier: str) -> list[dict]:
@@ -364,8 +378,19 @@ class ArchiveClient:
         filter_expr: str | list[str] | None = None,
         collapse: str | None = None,
         fields: list[str] | None = None,
-    ) -> list[dict]:
-        """CDX API search. Returns list of dicts keyed by the header row."""
+        page: int | None = None,
+        show_resume_key: bool = False,
+        resume_key: str | None = None,
+        newest: bool = False,
+        fast_latest: bool = False,
+    ) -> list[dict] | dict:
+        """CDX API search. Returns list of dicts keyed by the header row.
+
+        When *show_resume_key* is True the return value is a dict
+        ``{"snapshots": [...], "resume_key": str | None}`` so callers can
+        page through large result sets.  When False (default) a plain
+        ``list[dict]`` is returned for backward compatibility.
+        """
         if not url or not url.strip():
             raise ValueError("URL must not be empty")
         if match_type == "domain":
@@ -393,6 +418,16 @@ class ArchiveClient:
             params.append(("collapse", collapse))
         if fields:
             params.append(("fl", ",".join(fields)))
+        if page is not None:
+            params.append(("page", page))
+        if show_resume_key:
+            params.append(("showResumeKey", "true"))
+        if resume_key:
+            params.append(("resumeKey", resume_key))
+        if newest:
+            params.append(("newest", "true"))
+        if fast_latest:
+            params.append(("fastLatest", "true"))
 
         resp = await self._request(
             "GET", f"{WAYBACK_BASE}/cdx/search/cdx", params=params
@@ -401,10 +436,35 @@ class ArchiveClient:
         data = resp.json()
 
         if not data or len(data) < 2:
+            if show_resume_key:
+                return {"snapshots": [], "resume_key": None}
             return []
 
         headers = data[0]
-        return [dict(zip(headers, row)) for row in data[1:]]
+        rows = data[1:]
+
+        if show_resume_key:
+            # CDX appends an empty [] separator row then a [resumeKey] row
+            # when showResumeKey=true and more results are available.
+            separator_idx: int | None = None
+            for i, row in enumerate(rows):
+                if row == []:
+                    separator_idx = i
+                    break
+
+            parsed_resume_key: str | None = None
+            if separator_idx is not None:
+                data_rows = rows[:separator_idx]
+                resume_rows = rows[separator_idx + 1:]
+                if resume_rows and len(resume_rows[0]) >= 1:
+                    parsed_resume_key = resume_rows[0][0]
+            else:
+                data_rows = rows
+
+            snapshots = [dict(zip(headers, row)) for row in data_rows]
+            return {"snapshots": snapshots, "resume_key": parsed_resume_key}
+
+        return [dict(zip(headers, row)) for row in rows]
 
     async def wayback_availability(self, url: str) -> dict:
         """Quick availability check via the Wayback availability API."""
@@ -482,6 +542,20 @@ class ArchiveClient:
         }
         resp = await self._request(
             "POST", f"{WAYBACK_BASE}/save/{url}", headers=headers
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def save_page_status(self, job_id: str) -> dict:
+        """Poll the status of a Save Page Now (SPN2) job.
+
+        Returns a dict with job status information including whether the
+        save has completed and the resulting Wayback URL.
+        """
+        if not job_id or not job_id.strip():
+            raise ValueError("Job ID must not be empty")
+        resp = await self._request(
+            "GET", f"{WAYBACK_BASE}/save/status/{job_id}"
         )
         resp.raise_for_status()
         return resp.json()

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 
-def test_server_has_12_tools():
-    """Verify all 12 tools are registered."""
+def test_server_has_13_tools():
+    """Verify all 13 tools are registered."""
     from internet_archive_mcp.server import mcp
 
     # FastMCP stores tools internally — access the tool manager
     tools = mcp._tool_manager._tools
-    assert len(tools) == 12, f"Expected 12 tools, got {len(tools)}: {list(tools.keys())}"
+    assert len(tools) == 13, f"Expected 13 tools, got {len(tools)}: {list(tools.keys())}"
 
 
 def test_server_imports_cleanly():
@@ -41,6 +41,7 @@ def test_tool_names():
         "get_item_thumbnail",
         "search_archive_deep",
         "save_page",
+        "save_page_status",
     }
     actual = set(mcp._tool_manager._tools.keys())
     assert actual == expected

@@ -736,6 +736,224 @@ class TestWaybackSnapshots:
         assert result == []
 
 
+class TestWaybackSnapshotsPagination:
+    async def test_show_resume_key_parses_separator_and_key(self) -> None:
+        """When showResumeKey=true, CDX appends [] then [resumeKey]."""
+        cdx_with_resume = [
+            ["urlkey", "timestamp", "original"],
+            ["com,example)/", "20200101", "http://example.com/"],
+            ["com,example)/", "20200201", "http://example.com/"],
+            [],
+            ["resume_abc123"],
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=cdx_with_resume)
+
+        ac = make_client(handler)
+        result = await ac.wayback_snapshots("example.com", show_resume_key=True)
+        assert isinstance(result, dict)
+        assert len(result["snapshots"]) == 2
+        assert result["resume_key"] == "resume_abc123"
+
+    async def test_show_resume_key_no_more_pages(self) -> None:
+        """When no separator row, resume_key should be None."""
+        cdx_no_resume = [
+            ["urlkey", "timestamp"],
+            ["com,example)/", "20200101"],
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=cdx_no_resume)
+
+        ac = make_client(handler)
+        result = await ac.wayback_snapshots("example.com", show_resume_key=True)
+        assert isinstance(result, dict)
+        assert len(result["snapshots"]) == 1
+        assert result["resume_key"] is None
+
+    async def test_show_resume_key_empty_response(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[])
+
+        ac = make_client(handler)
+        result = await ac.wayback_snapshots("example.com", show_resume_key=True)
+        assert result == {"snapshots": [], "resume_key": None}
+
+    async def test_page_param_passed(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return httpx.Response(200, json=CDX_RESPONSE)
+
+        ac = make_client(handler)
+        await ac.wayback_snapshots("example.com", page=3)
+        assert "page=3" in seen["url"]
+
+    async def test_resume_key_param_passed(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return httpx.Response(200, json=CDX_RESPONSE)
+
+        ac = make_client(handler)
+        await ac.wayback_snapshots("example.com", resume_key="abc123")
+        assert "resumeKey=abc123" in seen["url"]
+
+    async def test_show_resume_key_param_passed(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return httpx.Response(200, json=CDX_RESPONSE)
+
+        ac = make_client(handler)
+        await ac.wayback_snapshots("example.com", show_resume_key=True)
+        assert "showResumeKey=true" in seen["url"]
+
+    async def test_newest_param_passed(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return httpx.Response(200, json=CDX_RESPONSE)
+
+        ac = make_client(handler)
+        await ac.wayback_snapshots("example.com", newest=True)
+        assert "newest=true" in seen["url"]
+
+    async def test_fast_latest_param_passed(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return httpx.Response(200, json=CDX_RESPONSE)
+
+        ac = make_client(handler)
+        await ac.wayback_snapshots("example.com", fast_latest=True)
+        assert "fastLatest=true" in seen["url"]
+
+    async def test_default_returns_list_not_dict(self) -> None:
+        """Backward compat: without show_resume_key, returns plain list."""
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=CDX_RESPONSE)
+
+        ac = make_client(handler)
+        result = await ac.wayback_snapshots("example.com")
+        assert isinstance(result, list)
+
+
+class TestSavePageStatus:
+    async def test_returns_status_dict(self) -> None:
+        status_resp = {"status": "success", "original_url": "http://example.com"}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=status_resp)
+
+        ac = make_client(handler)
+        result = await ac.save_page_status("job123")
+        assert result["status"] == "success"
+
+    async def test_correct_url(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return httpx.Response(200, json={"status": "pending"})
+
+        ac = make_client(handler)
+        await ac.save_page_status("job456")
+        assert "/save/status/job456" in seen["url"]
+
+    async def test_empty_job_id_raises(self) -> None:
+        ac = make_client(lambda r: httpx.Response(200, json={}))
+        with pytest.raises(ValueError, match="must not be empty"):
+            await ac.save_page_status("")
+
+
+class TestDownloadUrl:
+    async def test_files_include_download_url(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=METADATA_RESPONSE)
+
+        ac = make_client(handler)
+        files = await ac.list_item_files("test")
+        assert files[0]["download_url"] == "https://archive.org/download/test/test.pdf"
+
+    async def test_download_url_with_format_filter(self) -> None:
+        resp = {
+            "metadata": {"identifier": "myitem"},
+            "files": [
+                {"name": "a.mp3", "format": "VBR MP3"},
+                {"name": "b.pdf", "format": "Text PDF"},
+            ],
+            "files_count": 2,
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=resp)
+
+        ac = make_client(handler)
+        files = await ac.list_item_files("myitem", format_filter="VBR MP3")
+        assert len(files) == 1
+        assert files[0]["download_url"] == "https://archive.org/download/myitem/a.mp3"
+
+
+class TestSearchArchiveWarning:
+    async def test_warning_when_numfound_exceeds_10000(self) -> None:
+        big_response = {
+            "response": {
+                "numFound": 50000,
+                "start": 0,
+                "docs": [{"identifier": "x"}],
+            }
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=big_response)
+
+        ac = make_client(handler)
+        result = await ac.search_archive("big query")
+        assert "_warning" in result
+        assert "10,000" in result["_warning"]
+        assert "search_archive_deep" in result["_warning"]
+
+    async def test_no_warning_when_under_10000(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=SEARCH_RESPONSE)
+
+        ac = make_client(handler)
+        result = await ac.search_archive("small query")
+        assert "_warning" not in result
+
+
+class TestSearchArchiveDeepTotalOnly:
+    async def test_total_only_param_passed(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return httpx.Response(200, json={"total": 42, "count": 0, "items": []})
+
+        ac = make_client(handler)
+        result = await ac.search_archive_deep("test", total_only=True)
+        assert "total_only=true" in seen["url"]
+        assert result["total"] == 42
+
+    async def test_total_only_false_not_in_params(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return httpx.Response(200, json={"items": [], "total": 0, "count": 0})
+
+        ac = make_client(handler)
+        await ac.search_archive_deep("test", total_only=False)
+        assert "total_only" not in seen["url"]
+
+
 AVAILABILITY_RESPONSE = {
     "url": "example.com",
     "archived_snapshots": {

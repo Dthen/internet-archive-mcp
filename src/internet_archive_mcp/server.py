@@ -43,7 +43,7 @@ async def search_archive(
 
     Args:
         query: Free-text Lucene query (e.g. "jazz piano", "creator:ellis").
-        mediatype: Filter by media type (texts, audio, movies, software, etc.).
+        mediatype: Filter by media type (texts, web, movies, audio, data, image, collection, software).
         collection: Restrict results to a specific collection identifier.
         fields: Metadata fields to return per result. Defaults to identifier,
             title, mediatype, creator, downloads, publicdate, year.
@@ -143,11 +143,20 @@ async def wayback_snapshots(
     limit: int = 25,
     filter_expr: str | list[str] | None = None,
     collapse: str | None = None,
-) -> list[dict] | str:
+    fields: list[str] | None = None,
+    page: int | None = None,
+    show_resume_key: bool = False,
+    resume_key: str | None = None,
+    newest: bool = False,
+    fast_latest: bool = False,
+) -> list[dict] | dict | str:
     """Search the Wayback Machine CDX index for snapshots of a URL.
 
     Returns a list of snapshot records with timestamp, original URL, MIME
     type, status code, and digest. Use match_type to control URL matching.
+
+    When show_resume_key is True, returns a dict with "snapshots" and
+    "resume_key" keys for paging through large result sets.
 
     Args:
         url: The URL to search for (e.g. "example.com/page").
@@ -160,6 +169,15 @@ async def wayback_snapshots(
             ["mimetype:text/html", "statuscode:200"].
         collapse: Collapse results by a field, e.g. "urlkey" or
             "timestamp:4" (group by year).
+        fields: CDX fields to return (e.g. ["timestamp", "original",
+            "statuscode"]). Defaults to all fields.
+        page: Result page number (pairs with limit for pagination).
+        show_resume_key: When True, response includes a resume key for
+            continuing pagination. Returns a dict instead of a list.
+        resume_key: Pass a resume key from a previous response to continue
+            from where it left off.
+        newest: When True, return the newest snapshot first.
+        fast_latest: When True, use a faster algorithm for latest snapshots.
     """
     try:
         return await _client.wayback_snapshots(
@@ -170,6 +188,12 @@ async def wayback_snapshots(
             limit=limit,
             filter_expr=filter_expr,
             collapse=collapse,
+            fields=fields,
+            page=page,
+            show_resume_key=show_resume_key,
+            resume_key=resume_key,
+            newest=newest,
+            fast_latest=fast_latest,
         )
     except ValueError as e:
         return f"Error: {e}"
@@ -304,6 +328,7 @@ async def search_archive_deep(
     sorts: list[str] | None = None,
     count: int = 100,
     cursor: str | None = None,
+    total_only: bool = False,
 ) -> dict | str:
     """Deep search using the Internet Archive scraping API with cursor paging.
 
@@ -317,10 +342,13 @@ async def search_archive_deep(
         count: Results per page, minimum 100 (default 100).
         cursor: Opaque cursor string from a previous response for the
             next page. Omit for the first page.
+        total_only: When True, return only the total count without item
+            records. Useful for quick cardinality checks.
     """
     try:
         return await _client.search_archive_deep(
-            query, fields=fields, sorts=sorts, count=count, cursor=cursor
+            query, fields=fields, sorts=sorts, count=count, cursor=cursor,
+            total_only=total_only,
         )
     except ValueError as e:
         return f"Error: {e}"
@@ -354,6 +382,25 @@ async def save_page(
     sk = secret_key or os.environ.get("IA_SECRET_KEY")
     try:
         return await _client.save_page(url, access_key=ak, secret_key=sk)
+    except ValueError as e:
+        return f"Error: {e}"
+    except httpx.HTTPError as e:
+        return f"Error: API request failed — {e}"
+
+
+@mcp.tool()
+async def save_page_status(job_id: str) -> dict | str:
+    """Check the status of a Save Page Now (SPN2) job.
+
+    After calling save_page, use the returned job_id to poll for
+    completion. Returns status information including whether the save
+    has completed and the resulting Wayback URL.
+
+    Args:
+        job_id: The job ID returned by save_page.
+    """
+    try:
+        return await _client.save_page_status(job_id)
     except ValueError as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:

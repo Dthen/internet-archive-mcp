@@ -334,3 +334,78 @@ class TestSavePageTool:
         result = await server_module.save_page("http://example.com")
         assert isinstance(result, dict)
         assert "LOW ENV_AK:ENV_SK" in seen_headers["auth"]
+
+
+class TestSavePageStatusTool:
+    async def test_returns_status(self, monkeypatch):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return json_response({"status": "success", "original_url": "http://example.com"})
+
+        monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
+        result = await server_module.save_page_status("job123")
+        assert isinstance(result, dict)
+        assert result["status"] == "success"
+
+    async def test_empty_job_id_returns_error(self, monkeypatch):
+        monkeypatch.setattr(server_module, "_client", make_mock_client(lambda r: json_response({})))
+        result = await server_module.save_page_status("")
+        assert isinstance(result, str)
+        assert "Error:" in result
+
+
+class TestWaybackSnapshotsPaginationTool:
+    async def test_show_resume_key_returns_dict(self, monkeypatch):
+        cdx_with_resume = [
+            ["urlkey", "timestamp"],
+            ["com,example)/", "20200101"],
+            [],
+            ["resume_key_abc"],
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return json_response(cdx_with_resume)
+
+        monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
+        result = await server_module.wayback_snapshots("example.com", show_resume_key=True)
+        assert isinstance(result, dict)
+        assert "snapshots" in result
+        assert result["resume_key"] == "resume_key_abc"
+
+    async def test_fields_param_accepted(self, monkeypatch):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return json_response([
+                ["timestamp", "statuscode"],
+                ["20200101", "200"],
+            ])
+
+        monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
+        result = await server_module.wayback_snapshots(
+            "example.com", fields=["timestamp", "statuscode"]
+        )
+        assert isinstance(result, list)
+        assert result[0]["timestamp"] == "20200101"
+
+
+class TestSearchArchiveDeepTotalOnlyTool:
+    async def test_total_only_returns_count(self, monkeypatch):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return json_response({"total": 999, "count": 0, "items": []})
+
+        monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
+        result = await server_module.search_archive_deep("jazz", total_only=True)
+        assert isinstance(result, dict)
+        assert result["total"] == 999
+
+
+class TestListItemFilesDownloadUrl:
+    async def test_files_have_download_url(self, monkeypatch):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return json_response({
+                "metadata": {"identifier": "test-item"},
+                "files": [{"name": "file1.mp3", "format": "VBR MP3"}],
+            })
+
+        monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
+        result = await server_module.list_item_files("test-item")
+        assert isinstance(result, list)
+        assert result[0]["download_url"] == "https://archive.org/download/test-item/file1.mp3"

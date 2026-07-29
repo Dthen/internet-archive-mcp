@@ -133,6 +133,10 @@ internet-archive-mcp/
 - **`client.py`** — `ArchiveClient` class using async `httpx`. Talks to two base URLs: `https://archive.org` (search, metadata, availability) and `https://web.archive.org` (CDX, content fetch, Save Page Now). Owns caching, rate limiting, and retry logic.
 - **`server.py`** — FastMCP server with 12 `@mcp.tool()` definitions. Each tool is a thin async wrapper that delegates to `ArchiveClient` and converts exceptions to error strings.
 
+## Design decisions
+
+The Related Items API (`archive.org/recommendations/{id}`) was investigated during research but returned no useful data. It is intentionally excluded. See RESEARCH.md §5f.
+
 ## Links
 
 - [RESEARCH.md](RESEARCH.md) — full API research with tested curl examples
