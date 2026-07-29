@@ -202,7 +202,7 @@ class ArchiveClient:
             for s in sort[:3]:
                 params.append(("sort[]", s))
 
-        sort_key = ",".join(sort) if sort else ""
+        sort_key = ",".join(sort[:3]) if sort else ""
         cache_key = f"search:{q}:{rows}:{page}:{','.join(fields)}:{sort_key}"
         cached = self._get_cached(cache_key, TTL_HOUR)
         if cached is not None:
@@ -211,6 +211,9 @@ class ArchiveClient:
         resp = await self._request("GET", f"{IA_BASE}/advancedsearch.php", params=params)
         resp.raise_for_status()
         data = resp.json()
+
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected API response format")
 
         response = data.get("response", {})
         num_found = response.get("numFound", 0)
@@ -268,6 +271,8 @@ class ArchiveClient:
             params.append(("fields", ",".join(fields)))
         sorts_note: str | None = None
         if sorts:
+            # Deduplicate while preserving order.
+            sorts = list(dict.fromkeys(sorts))
             # API contract: 'identifier' must be last if present.
             if "identifier" in sorts and sorts[-1] != "identifier":
                 sorts = [s for s in sorts if s != "identifier"] + ["identifier"]
@@ -312,6 +317,9 @@ class ArchiveClient:
         resp = await self._request("GET", f"{IA_BASE}/metadata/{quote(identifier, safe='')}")
         resp.raise_for_status()
         data = resp.json()
+
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected API response format")
 
         if not data:
             raise ValueError(f"Item not found: {identifier}")
@@ -420,6 +428,8 @@ class ArchiveClient:
             )
         if limit < 1:
             raise ValueError("limit must be >= 1")
+        if page is not None and page < 1:
+            raise ValueError("page must be >= 1")
 
         # Build cache key from all parameters that affect the response.
         filter_key = ""
@@ -473,6 +483,11 @@ class ArchiveClient:
         )
         resp.raise_for_status()
         data = resp.json()
+
+        if not isinstance(data, list):
+            if show_resume_key:
+                return {"snapshots": [], "resume_key": None}
+            return []
 
         if not data or len(data) < 2:
             if show_resume_key:
@@ -539,6 +554,20 @@ class ArchiveClient:
         if char_limit < 1:
             raise ValueError("char_limit must be >= 1")
 
+        # Cache keyed on url+timestamp+raw (not char_limit — truncate on read).
+        cache_key = f"fetch:{url}:{timestamp}:{raw}"
+        cached = self._get_cached(cache_key, TTL_HOUR)
+        if cached is not None:
+            content = cached["content"]
+            content_length = cached["content_length"]
+            truncated = content_length > char_limit
+            return {
+                "url": url,
+                "content": content[:char_limit] if truncated else content,
+                "truncated": truncated,
+                "content_length": content_length,
+            }
+
         ts = timestamp or ""
         if raw and ts:
             ts = ts + "id_"
@@ -554,6 +583,10 @@ class ArchiveClient:
         content = resp.text
 
         content_length = len(content)
+
+        # Cache full content; truncate on read so different char_limits share entry.
+        self._set_cached(cache_key, {"content": content, "content_length": content_length})
+
         truncated = content_length > char_limit
         if truncated:
             content = content[:char_limit]
@@ -609,7 +642,7 @@ class ArchiveClient:
         if not job_id or not job_id.strip():
             raise ValueError("Job ID must not be empty")
         resp = await self._request(
-            "GET", f"{WAYBACK_BASE}/save/status/{job_id}"
+            "GET", f"{WAYBACK_BASE}/save/status/{quote(job_id, safe='')}"
         )
         resp.raise_for_status()
         return resp.json()

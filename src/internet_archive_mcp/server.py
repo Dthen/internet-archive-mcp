@@ -61,7 +61,7 @@ async def search_archive(
             rows=rows,
             page=page,
         )
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -85,7 +85,7 @@ async def get_item_metadata(
         return await _client.get_item_metadata(
             identifier, include_files=include_files
         )
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -110,7 +110,7 @@ async def list_item_files(
         return await _client.list_item_files(
             identifier, format_filter=format_filter
         )
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -128,7 +128,7 @@ async def get_item_reviews(identifier: str) -> list[dict] | str:
     """
     try:
         return await _client.get_item_reviews(identifier)
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -195,7 +195,7 @@ async def wayback_snapshots(
             newest=newest,
             fast_latest=fast_latest,
         )
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -213,7 +213,7 @@ async def wayback_availability(url: str) -> dict | str:
     """
     try:
         return await _client.wayback_availability(url)
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -248,7 +248,7 @@ async def wayback_fetch(
             raw=raw,
             char_limit=char_limit,
         )
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -281,7 +281,7 @@ async def browse_collection(
         return await _client.browse_collection(
             collection, rows=rows, page=page, sort=sort
         )
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -299,7 +299,7 @@ async def get_collection_info(identifier: str) -> dict | str:
     """
     try:
         return await _client.get_collection_info(identifier)
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -317,7 +317,7 @@ def get_item_thumbnail(identifier: str) -> str:  # Sync: no HTTP call, just buil
     """
     try:
         return _client.get_item_thumbnail_url(identifier)
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
 
 
@@ -350,7 +350,7 @@ async def search_archive_deep(
             query, fields=fields, sorts=sorts, count=count, cursor=cursor,
             total_only=total_only,
         )
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -382,7 +382,7 @@ async def save_page(
     sk = secret_key or os.environ.get("IA_SECRET_KEY")
     try:
         return await _client.save_page(url, access_key=ak, secret_key=sk)
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -401,7 +401,7 @@ async def save_page_status(job_id: str) -> dict | str:
     """
     try:
         return await _client.save_page_status(job_id)
-    except ValueError as e:
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
