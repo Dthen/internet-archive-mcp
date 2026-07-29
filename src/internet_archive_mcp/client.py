@@ -7,6 +7,7 @@ import copy
 import math
 import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -166,6 +167,10 @@ class ArchiveClient:
         page: int = 1,
     ) -> dict:
         """Search via advancedsearch.php. Returns {numFound, start, docs, total_pages}."""
+        if rows < 1:
+            raise ValueError("rows must be >= 1")
+        if page < 1:
+            raise ValueError("page must be >= 1")
         # Build Lucene query with optional filters prepended.
         parts: list[str] = []
         if mediatype:
@@ -197,7 +202,8 @@ class ArchiveClient:
             for s in sort[:3]:
                 params.append(("sort[]", s))
 
-        cache_key = f"search:{q}:{rows}:{page}:{','.join(fields)}:{sort}"
+        sort_key = ",".join(sort) if sort else ""
+        cache_key = f"search:{q}:{rows}:{page}:{','.join(fields)}:{sort_key}"
         cached = self._get_cached(cache_key, TTL_HOUR)
         if cached is not None:
             return cached
@@ -260,7 +266,12 @@ class ArchiveClient:
         ]
         if fields:
             params.append(("fields", ",".join(fields)))
+        sorts_note: str | None = None
         if sorts:
+            # API contract: 'identifier' must be last if present.
+            if "identifier" in sorts and sorts[-1] != "identifier":
+                sorts = [s for s in sorts if s != "identifier"] + ["identifier"]
+                sorts_note = "sorts reordered: 'identifier' moved to last position per API contract"
             params.append(("sorts", ",".join(sorts)))
         if cursor:
             params.append(("cursor", cursor))
@@ -278,6 +289,8 @@ class ArchiveClient:
             "total": data.get("total", 0),
             "count": data.get("count", 0),
         }
+        if sorts_note:
+            result["_note"] = sorts_note
         if "cursor" in data and data["cursor"]:
             result["cursor"] = data["cursor"]
         return result
@@ -296,7 +309,7 @@ class ArchiveClient:
         if cached is not None:
             return cached
 
-        resp = await self._request("GET", f"{IA_BASE}/metadata/{identifier}")
+        resp = await self._request("GET", f"{IA_BASE}/metadata/{quote(identifier, safe='')}")
         resp.raise_for_status()
         data = resp.json()
 
@@ -308,7 +321,7 @@ class ArchiveClient:
             data.pop("files_count", None)
 
         self._set_cached(cache_key, data)
-        return data
+        return copy.deepcopy(data)
 
     async def list_item_files(
         self, identifier: str, *, format_filter: str | None = None
@@ -323,7 +336,9 @@ class ArchiveClient:
                 if f.get("format", "").lower() == fmt_lower
             ]
         for f in files:
-            f["download_url"] = f"{IA_BASE}/download/{identifier}/{f['name']}"
+            name = f.get("name", "")
+            if name:
+                f["download_url"] = f"{IA_BASE}/download/{quote(identifier, safe='')}/{quote(name, safe='')}"
         return files
 
     async def get_item_reviews(self, identifier: str) -> list[dict]:
@@ -393,11 +408,35 @@ class ArchiveClient:
         """
         if not url or not url.strip():
             raise ValueError("URL must not be empty")
+        _valid_match_types = {"exact", "prefix", "host", "domain"}
+        if match_type not in _valid_match_types:
+            raise ValueError(
+                f"match_type must be one of {sorted(_valid_match_types)}, got '{match_type}'"
+            )
         if match_type == "domain":
             raise ValueError(
                 "match_type='domain' requires authentication. "
                 "Use access/secret keys from https://archive.org/account/s3.php"
             )
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+
+        # Build cache key from all parameters that affect the response.
+        filter_key = ""
+        if filter_expr:
+            if isinstance(filter_expr, str):
+                filter_key = filter_expr
+            else:
+                filter_key = ",".join(filter_expr)
+        fields_key = ",".join(fields) if fields else ""
+        cdx_cache_key = (
+            f"cdx:{url}:{match_type}:{from_year}:{to_year}:{limit}:"
+            f"{filter_key}:{collapse}:{fields_key}:{page}:"
+            f"{show_resume_key}:{resume_key}:{newest}:{fast_latest}"
+        )
+        cached = self._get_cached(cdx_cache_key, TTL_HOUR)
+        if cached is not None:
+            return cached
 
         params: list[tuple[str, Any]] = [
             ("url", url),
@@ -461,20 +500,30 @@ class ArchiveClient:
             else:
                 data_rows = rows
 
-            snapshots = [dict(zip(headers, row)) for row in data_rows]
-            return {"snapshots": snapshots, "resume_key": parsed_resume_key}
+            snapshots = [dict(zip(headers, row)) for row in data_rows if len(row) == len(headers)]
+            result = {"snapshots": snapshots, "resume_key": parsed_resume_key}
+            self._set_cached(cdx_cache_key, result)
+            return result
 
-        return [dict(zip(headers, row)) for row in rows]
+        result_list = [dict(zip(headers, row)) for row in rows if len(row) == len(headers)]
+        self._set_cached(cdx_cache_key, result_list)
+        return result_list
 
     async def wayback_availability(self, url: str) -> dict:
         """Quick availability check via the Wayback availability API."""
         if not url or not url.strip():
             raise ValueError("URL must not be empty")
+        cache_key = f"availability:{url}"
+        cached = self._get_cached(cache_key, TTL_MINUTE)
+        if cached is not None:
+            return cached
         resp = await self._request(
             "GET", f"{IA_BASE}/wayback/available", params={"url": url}
         )
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        self._set_cached(cache_key, data)
+        return data
 
     async def wayback_fetch(
         self,
@@ -487,6 +536,8 @@ class ArchiveClient:
         """Fetch archived content from the Wayback Machine."""
         if not url or not url.strip():
             raise ValueError("URL must not be empty")
+        if char_limit < 1:
+            raise ValueError("char_limit must be >= 1")
 
         ts = timestamp or ""
         if raw and ts:
@@ -494,7 +545,10 @@ class ArchiveClient:
         elif raw and not ts:
             ts = "id_"
 
-        fetch_url = f"{WAYBACK_BASE}/web/{ts}/{url}"
+        if ts:
+            fetch_url = f"{WAYBACK_BASE}/web/{ts}/{url}"
+        else:
+            fetch_url = f"{WAYBACK_BASE}/web/{url}"
         resp = await self._request("GET", fetch_url)
         resp.raise_for_status()
         content = resp.text
@@ -517,7 +571,7 @@ class ArchiveClient:
         """Return the thumbnail URL for an item (synchronous — just builds a URL)."""
         if not identifier or not identifier.strip():
             raise ValueError("Item identifier must not be empty")
-        return f"{IA_BASE}/services/img/{identifier}"
+        return f"{IA_BASE}/services/img/{quote(identifier, safe='')}"
 
     async def save_page(
         self,

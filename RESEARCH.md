@@ -167,7 +167,7 @@ A collection identifier (e.g. `prelinger`) resolves via the same endpoint with `
 | `collapse` | Dedup consecutive on field | `collapse=digest`, `collapse=urlkey` |
 | `page` | Result page (with `limit`) | pairs with `showResumeKey` |
 | `showResumeKey` | `true` → appends resume key row for paging | see below |
-| `showNumCaptures` | include capture counts | |
+| `showNumCaptures` | include capture counts | **Intentionally omitted** from `wayback_snapshots` — adds a capture-count column with low utility for the MCP use case (agents typically need timestamps/URLs, not aggregate counts). Can be added later if needed. |
 | `newest` / `oldest` | `newest=true` worked; `oldest=true` **timed out** in testing — avoid | |
 | `gzip` | gzip output | |
 | `fastLatest` | faster "latest" resolution | |

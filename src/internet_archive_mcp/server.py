@@ -110,7 +110,7 @@ async def list_item_files(
         return await _client.list_item_files(
             identifier, format_filter=format_filter
         )
-    except ValueError as e:
+    except (ValueError, KeyError) as e:
         return f"Error: {e}"
     except httpx.HTTPError as e:
         return f"Error: API request failed — {e}"
@@ -306,7 +306,7 @@ async def get_collection_info(identifier: str) -> dict | str:
 
 
 @mcp.tool()
-def get_item_thumbnail(identifier: str) -> str:
+def get_item_thumbnail(identifier: str) -> str:  # Sync: no HTTP call, just builds a URL
     """Get the thumbnail image URL for an Internet Archive item.
 
     Returns a URL that redirects to the item's thumbnail image. Can be
@@ -337,7 +337,7 @@ async def search_archive_deep(
 
     Args:
         query: Lucene search query string.
-        fields: Comma-separated metadata fields to return.
+        fields: List of metadata fields to return (e.g. ["identifier", "title"]).
         sorts: Sort expressions (e.g. ["downloads desc"]).
         count: Results per page, minimum 100 (default 100).
         cursor: Opaque cursor string from a previous response for the

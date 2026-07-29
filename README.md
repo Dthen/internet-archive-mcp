@@ -8,7 +8,7 @@ Existing Internet Archive MCP servers are almost all **Wayback-only** — small 
 
 - **Full IA collections access** — search, metadata, files, reviews, and collection browsing across all media types (texts, audio, movies, software, images)
 - **Full Wayback Machine coverage** — CDX snapshot search, availability checks, and raw content fetch
-- **12 tools** organized in three tiers (core, differentiator, auth-gated)
+- **13 tools** organized in three tiers (core, differentiator, auth-gated)
 - **Anonymous reads** — every read operation works with zero configuration
 - **Auth-gated writes** — Save Page Now requires IA S3 keys, cleanly separated from the read path
 
@@ -78,6 +78,7 @@ Add to `claude_desktop_config.json`:
 | Tool | Key args | Returns |
 |------|----------|---------|
 | `save_page` | `url`, `access_key?`, `secret_key?` | SPN2 job status and archived URL |
+| `save_page_status` | `job_id` | Status of a Save Page Now job (completion, Wayback URL) |
 
 ## Configuration
 
@@ -131,7 +132,7 @@ internet-archive-mcp/
 ```
 
 - **`client.py`** — `ArchiveClient` class using async `httpx`. Talks to two base URLs: `https://archive.org` (search, metadata, availability) and `https://web.archive.org` (CDX, content fetch, Save Page Now). Owns caching, rate limiting, and retry logic.
-- **`server.py`** — FastMCP server with 12 `@mcp.tool()` definitions. Each tool is a thin async wrapper that delegates to `ArchiveClient` and converts exceptions to error strings.
+- **`server.py`** — FastMCP server with 13 `@mcp.tool()` definitions. Each tool is a thin async wrapper that delegates to `ArchiveClient` and converts exceptions to error strings.
 
 ## Design decisions
 
@@ -141,4 +142,4 @@ The Related Items API (`archive.org/recommendations/{id}`) was investigated duri
 
 - [RESEARCH.md](RESEARCH.md) — full API research with tested curl examples
 - [Internet Archive Developer Docs](https://archive.org/developers)
-- [IA Bots Policy](https://archive.org/developers/tos) — terms of service and acceptable use for automated access
+- [IA Bots Policy](https://archive.org/developers/bots.html) — terms of service and acceptable use for automated access
