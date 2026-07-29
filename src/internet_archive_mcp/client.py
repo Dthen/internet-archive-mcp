@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import math
 import time
 from typing import Any
 
@@ -150,3 +151,337 @@ class ArchiveClient:
             return response
 
         raise RuntimeError("Exhausted retries")  # pragma: no cover
+
+    # -- Search methods (Task 3) -----------------------------------------------
+
+    async def search_archive(
+        self,
+        query: str,
+        *,
+        mediatype: str | None = None,
+        collection: str | None = None,
+        fields: list[str] | None = None,
+        sort: list[str] | None = None,
+        rows: int = 20,
+        page: int = 1,
+    ) -> dict:
+        """Search via advancedsearch.php. Returns {numFound, start, docs, total_pages}."""
+        # Build Lucene query with optional filters prepended.
+        parts: list[str] = []
+        if mediatype:
+            parts.append(f"mediatype:({mediatype})")
+        if collection:
+            parts.append(f"collection:({collection})")
+        if query and query.strip():
+            parts.append(query)
+        if not parts:
+            raise ValueError("Search query must not be empty")
+        q = " AND ".join(parts)
+
+        if fields is None:
+            fields = [
+                "identifier", "title", "mediatype", "creator",
+                "downloads", "publicdate", "year",
+            ]
+
+        # Build params as list of tuples for repeated keys.
+        params: list[tuple[str, Any]] = [
+            ("q", q),
+            ("output", "json"),
+            ("rows", rows),
+            ("page", page),
+        ]
+        for f in fields:
+            params.append(("fl[]", f))
+        if sort:
+            for s in sort[:3]:
+                params.append(("sort[]", s))
+
+        cache_key = f"search:{q}:{rows}:{page}:{','.join(fields)}:{sort}"
+        cached = self._get_cached(cache_key, TTL_HOUR)
+        if cached is not None:
+            return cached
+
+        resp = await self._request("GET", f"{IA_BASE}/advancedsearch.php", params=params)
+        resp.raise_for_status()
+        data = resp.json()
+
+        response = data.get("response", {})
+        num_found = response.get("numFound", 0)
+        start = response.get("start", 0)
+        docs = response.get("docs", [])
+
+        # Trim fav-* entries from collection arrays.
+        for doc in docs:
+            if "collection" in doc and isinstance(doc["collection"], list):
+                doc["collection"] = [
+                    c for c in doc["collection"] if not c.startswith("fav-")
+                ]
+
+        total_pages = math.ceil(num_found / rows) if rows > 0 else 0
+
+        result = {
+            "numFound": num_found,
+            "start": start,
+            "docs": docs,
+            "total_pages": total_pages,
+        }
+        self._set_cached(cache_key, result)
+        return result
+
+    async def search_archive_deep(
+        self,
+        query: str,
+        *,
+        fields: list[str] | None = None,
+        sorts: list[str] | None = None,
+        count: int = 100,
+        cursor: str | None = None,
+    ) -> dict:
+        """Scraping API cursor-based deep paging. Returns {items, total, count, cursor?}."""
+        if not query or not query.strip():
+            raise ValueError("Search query must not be empty")
+        if count < 100:
+            raise ValueError("count must be >= 100 for the scraping API")
+
+        params: list[tuple[str, Any]] = [
+            ("q", query),
+            ("count", count),
+        ]
+        if fields:
+            params.append(("fields", ",".join(fields)))
+        if sorts:
+            params.append(("sorts", ",".join(sorts)))
+        if cursor:
+            params.append(("cursor", cursor))
+
+        resp = await self._request(
+            "GET", f"{IA_BASE}/services/search/v1/scrape", params=params
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        result: dict[str, Any] = {
+            "items": data.get("items", []),
+            "total": data.get("total", 0),
+            "count": data.get("count", 0),
+        }
+        if "cursor" in data and data["cursor"]:
+            result["cursor"] = data["cursor"]
+        return result
+
+    # -- Metadata methods (Task 4) ---------------------------------------------
+
+    async def get_item_metadata(
+        self, identifier: str, *, include_files: bool = False
+    ) -> dict:
+        """Fetch item metadata. Raises ValueError for nonexistent items (API returns {})."""
+        if not identifier or not identifier.strip():
+            raise ValueError("Item identifier must not be empty")
+
+        cache_key = f"metadata:{identifier}:{include_files}"
+        cached = self._get_cached(cache_key, TTL_HOUR)
+        if cached is not None:
+            return cached
+
+        resp = await self._request("GET", f"{IA_BASE}/metadata/{identifier}")
+        resp.raise_for_status()
+        data = resp.json()
+
+        if not data:
+            raise ValueError(f"Item not found: {identifier}")
+
+        if not include_files:
+            data.pop("files", None)
+            data.pop("files_count", None)
+
+        self._set_cached(cache_key, data)
+        return data
+
+    async def list_item_files(
+        self, identifier: str, *, format_filter: str | None = None
+    ) -> list[dict]:
+        """List files for an item, optionally filtered by format (case-insensitive)."""
+        data = await self.get_item_metadata(identifier, include_files=True)
+        files = data.get("files", [])
+        if format_filter:
+            fmt_lower = format_filter.lower()
+            files = [
+                f for f in files
+                if f.get("format", "").lower() == fmt_lower
+            ]
+        return files
+
+    async def get_item_reviews(self, identifier: str) -> list[dict]:
+        """Get reviews for an item. Returns [] if no reviews (absent key or null)."""
+        data = await self.get_item_metadata(identifier, include_files=False)
+        return data.get("reviews") or []
+
+    # -- Collection methods (Task 5) -------------------------------------------
+
+    async def browse_collection(
+        self,
+        collection: str,
+        *,
+        rows: int = 20,
+        page: int = 1,
+        sort: list[str] | None = None,
+    ) -> dict:
+        """Browse items in a collection. Wraps search_archive with collection filter."""
+        if not collection or not collection.strip():
+            raise ValueError("Collection name must not be empty")
+        if sort is None:
+            sort = ["downloads desc"]
+        return await self.search_archive(
+            "",  # empty base query — collection filter is the query
+            collection=collection,
+            rows=rows,
+            page=page,
+            sort=sort,
+        )
+
+    async def get_collection_info(self, identifier: str) -> dict:
+        """Get metadata for a collection item. Adds _note if not mediatype=collection."""
+        data = await self.get_item_metadata(identifier, include_files=False)
+        if data.get("metadata", {}).get("mediatype") != "collection":
+            data["_note"] = (
+                f"Item '{identifier}' has mediatype "
+                f"'{data.get('metadata', {}).get('mediatype', 'unknown')}', "
+                f"not 'collection'."
+            )
+        return data
+
+    # -- Wayback methods (Task 6) ----------------------------------------------
+
+    async def wayback_snapshots(
+        self,
+        url: str,
+        *,
+        match_type: str = "exact",
+        from_year: int | None = None,
+        to_year: int | None = None,
+        limit: int = 25,
+        filter_expr: str | list[str] | None = None,
+        collapse: str | None = None,
+        fields: list[str] | None = None,
+    ) -> list[dict]:
+        """CDX API search. Returns list of dicts keyed by the header row."""
+        if not url or not url.strip():
+            raise ValueError("URL must not be empty")
+        if match_type == "domain":
+            raise ValueError(
+                "match_type='domain' requires authentication. "
+                "Use access/secret keys from https://archive.org/account/s3.php"
+            )
+
+        params: list[tuple[str, Any]] = [
+            ("url", url),
+            ("output", "json"),
+            ("matchType", match_type),
+            ("limit", limit),
+        ]
+        if from_year is not None:
+            params.append(("from", from_year))
+        if to_year is not None:
+            params.append(("to", to_year))
+        if filter_expr:
+            if isinstance(filter_expr, str):
+                filter_expr = [filter_expr]
+            for f in filter_expr:
+                params.append(("filter", f))
+        if collapse:
+            params.append(("collapse", collapse))
+        if fields:
+            params.append(("fl", ",".join(fields)))
+
+        resp = await self._request(
+            "GET", f"{WAYBACK_BASE}/cdx/search/cdx", params=params
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        if not data or len(data) < 2:
+            return []
+
+        headers = data[0]
+        return [dict(zip(headers, row)) for row in data[1:]]
+
+    async def wayback_availability(self, url: str) -> dict:
+        """Quick availability check via the Wayback availability API."""
+        if not url or not url.strip():
+            raise ValueError("URL must not be empty")
+        resp = await self._request(
+            "GET", f"{IA_BASE}/wayback/available", params={"url": url}
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def wayback_fetch(
+        self,
+        url: str,
+        *,
+        timestamp: str | None = None,
+        raw: bool = True,
+        char_limit: int = 50000,
+    ) -> dict:
+        """Fetch archived content from the Wayback Machine."""
+        if not url or not url.strip():
+            raise ValueError("URL must not be empty")
+
+        ts = timestamp or ""
+        if raw and ts:
+            ts = ts + "id_"
+        elif raw and not ts:
+            ts = "id_"
+
+        fetch_url = f"{WAYBACK_BASE}/web/{ts}/{url}"
+        resp = await self._request("GET", fetch_url)
+        resp.raise_for_status()
+        content = resp.text
+
+        content_length = len(content)
+        truncated = content_length > char_limit
+        if truncated:
+            content = content[:char_limit]
+
+        return {
+            "url": url,
+            "content": content,
+            "truncated": truncated,
+            "content_length": content_length,
+        }
+
+    # -- Thumbnail + Save Page Now (Task 7) ------------------------------------
+
+    def get_item_thumbnail_url(self, identifier: str) -> str:
+        """Return the thumbnail URL for an item (synchronous — just builds a URL)."""
+        if not identifier or not identifier.strip():
+            raise ValueError("Item identifier must not be empty")
+        return f"{IA_BASE}/services/img/{identifier}"
+
+    async def save_page(
+        self,
+        url: str,
+        *,
+        access_key: str | None = None,
+        secret_key: str | None = None,
+    ) -> dict:
+        """Save Page Now (SPN2). Requires IA S3 access/secret keys."""
+        if not url or not url.strip():
+            raise ValueError("URL must not be empty")
+        if not access_key or not secret_key:
+            raise ValueError(
+                "Save Page Now requires authentication. "
+                "Provide access_key and secret_key from "
+                "https://archive.org/account/s3.php"
+            )
+
+        headers = {
+            "Authorization": f"LOW {access_key}:{secret_key}",
+            "Accept": "application/json",
+        }
+        resp = await self._request(
+            "POST", f"{WAYBACK_BASE}/save/{url}", headers=headers
+        )
+        resp.raise_for_status()
+        return resp.json()
