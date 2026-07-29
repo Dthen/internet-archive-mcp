@@ -1,41 +1,140 @@
 # Internet Archive MCP Server
 
-MCP server wrapping the [Internet Archive](https://archive.org) APIs — full-featured access to search, metadata, collections, Wayback Machine CDX, and Save Page Now.
+Full-coverage Internet Archive MCP server — search, metadata, collections, and Wayback Machine in one server.
 
-## Why
+## Why this server?
 
-- 800B+ archived web pages, plus books, audio, video, software, images
-- Existing MCP coverage is **Wayback-only** (3-4 small servers that just do snapshot lookup). Nobody has built a full-featured one covering the complete collections
-- Multiple free endpoints, no auth required
+Existing Internet Archive MCP servers are almost all **Wayback-only** — small 3–4 tool wrappers around the CDX snapshot API. This is the only server that combines:
 
-## API Notes
+- **Full IA collections access** — search, metadata, files, reviews, and collection browsing across all media types (texts, audio, movies, software, images)
+- **Full Wayback Machine coverage** — CDX snapshot search, availability checks, and raw content fetch
+- **12 tools** organized in three tiers (core, differentiator, auth-gated)
+- **Anonymous reads** — every read operation works with zero configuration
+- **Auth-gated writes** — Save Page Now requires IA S3 keys, cleanly separated from the read path
 
-- **Auth:** None for read operations. Free.
-- **Advanced Search:** `https://archive.org/advancedsearch.php?q=...&output=json` — search all metadata across all collections
-- **Metadata:** `https://archive.org/metadata/{identifier}` — full item details (files, reviews, metadata)
-- **Wayback CDX:** `https://web.archive.org/cdx/search/cdx?url=...&output=json` — snapshot history for any URL
-- **Save Page Now:** Programmatically archive a URL
-- **Rate limits:** "Be polite" — no hard published limit
+## Quick start
 
-## Rough Tool Ideas
+### Install
 
-- `search_archive(query, mediatype?, collection?)` — search across all IA collections
-- `get_item_metadata(identifier)` — full details for an item
-- `list_item_files(identifier)` — files available for an item
-- `wayback_snapshots(url)` — snapshot history for a URL via CDX
-- `wayback_fetch(url, timestamp?)` — retrieve an archived page
-- `save_page(url)` — archive a URL via Save Page Now
-- `browse_collection(collection)` — list items in a collection
+```bash
+cd internet-archive-mcp
+pip install -e .
+```
 
-## Status
+### Hermes Agent
 
-⚠️ **Before proceeding:** This needs proper research and planning before any code is written. Use the `plan` skill for a thorough execution plan and `subagent-driven-development` for implementation. Research first, build second.
+Add to your Hermes `config.yaml`:
 
-### Research TODO
-- [ ] Map all API endpoints and their parameters/response shapes
-- [ ] Test Advanced Search query language (Lucene-style syntax)
-- [ ] Understand CDX API pagination and filtering options
-- [ ] Check Save Page Now rate limits and auth requirements
-- [ ] Investigate collection-specific search (books, audio, video)
-- [ ] Survey existing Wayback MCPs to avoid duplication
-- [ ] Decide: TypeScript or Python?
+```yaml
+mcp_servers:
+  internet-archive:
+    command: python3
+    args: ['-m', 'internet_archive_mcp.server']
+    env:
+      PYTHONPATH: /path/to/internet-archive-mcp/src
+```
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "internet-archive": {
+      "command": "python3",
+      "args": ["-m", "internet_archive_mcp.server"],
+      "env": {"PYTHONPATH": "/path/to/internet-archive-mcp/src"}
+    }
+  }
+}
+```
+
+## Tool reference
+
+### Tier 1 — Core tools
+
+| Tool | Key args | Returns |
+|------|----------|---------|
+| `search_archive` | `query`, `mediatype?`, `collection?`, `fields?`, `sort?`, `rows=20`, `page=1` | Paginated results: `{numFound, start, docs, total_pages}` |
+| `get_item_metadata` | `identifier`, `include_files=False` | Full metadata block (title, creator, description, subjects, server info) |
+| `list_item_files` | `identifier`, `format_filter?` | List of file dicts (name, format, size, technical metadata) |
+| `get_item_reviews` | `identifier` | List of review objects (reviewer, stars, title, body) |
+| `wayback_snapshots` | `url`, `match_type="exact"`, `from_year?`, `to_year?`, `limit=25`, `filter_expr?`, `collapse?` | List of CDX snapshot records (timestamp, URL, MIME, status, digest) |
+| `wayback_availability` | `url` | Closest available snapshot timestamp and URL |
+| `wayback_fetch` | `url`, `timestamp?`, `raw=True`, `char_limit=50000` | Archived page content (raw by default, no toolbar) |
+
+### Tier 2 — Differentiator tools
+
+| Tool | Key args | Returns |
+|------|----------|---------|
+| `browse_collection` | `collection`, `rows=20`, `page=1`, `sort?` | Paginated items in a collection (sorted by downloads desc) |
+| `get_collection_info` | `identifier` | Collection metadata with item count; notes if not a collection |
+| `get_item_thumbnail` | `identifier` | Thumbnail image URL (usable in markdown) |
+| `search_archive_deep` | `query`, `fields?`, `sorts?`, `count=100`, `cursor?` | Cursor-paged results for unlimited deep pagination |
+
+### Tier 3 — Auth-gated tools
+
+| Tool | Key args | Returns |
+|------|----------|---------|
+| `save_page` | `url`, `access_key?`, `secret_key?` | SPN2 job status and archived URL |
+
+## Configuration
+
+All read tools work anonymously with no configuration. The only tool requiring credentials is `save_page` (Save Page Now).
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `IA_ACCESS_KEY` | Internet Archive S3 access key |
+| `IA_SECRET_KEY` | Internet Archive S3 secret key |
+
+Get your keys at: **https://archive.org/account/s3.php** (free account required).
+
+Keys can also be passed directly as tool arguments (`access_key`, `secret_key`) — env vars are the fallback.
+
+## Rate limiting & caching
+
+The client is designed to be a polite, well-behaved consumer of IA APIs:
+
+- **Rate limiter** — minimum 0.5s interval between all outgoing requests
+- **Bounded TTL cache** — in-memory cache with 256-entry cap; search and metadata results cached for 1 hour; oldest entries evicted first
+- **429 retry with backoff** — automatic retry on HTTP 429 with exponential backoff (honors `Retry-After` header), up to 3 attempts
+- **Mandatory User-Agent** — every request carries a descriptive `User-Agent: internet-archive-mcp/0.1.0 (...)` header per IA policy
+
+## Development
+
+```bash
+# Install with dev dependencies
+pip install -e '.[dev]'
+
+# Run tests
+pytest tests/ -v
+```
+
+## Architecture
+
+```
+internet-archive-mcp/
+├── src/internet_archive_mcp/
+│   ├── __init__.py
+│   ├── client.py      # Async httpx client — all API logic
+│   └── server.py      # FastMCP tool definitions (thin wrappers)
+├── tests/
+│   ├── conftest.py
+│   ├── test_client.py
+│   ├── test_server.py
+│   └── test_tools.py
+├── RESEARCH.md        # API research findings (tested with curl)
+└── pyproject.toml
+```
+
+- **`client.py`** — `ArchiveClient` class using async `httpx`. Talks to two base URLs: `https://archive.org` (search, metadata, availability) and `https://web.archive.org` (CDX, content fetch, Save Page Now). Owns caching, rate limiting, and retry logic.
+- **`server.py`** — FastMCP server with 12 `@mcp.tool()` definitions. Each tool is a thin async wrapper that delegates to `ArchiveClient` and converts exceptions to error strings.
+
+## Links
+
+- [RESEARCH.md](RESEARCH.md) — full API research with tested curl examples
+- [Internet Archive Developer Docs](https://archive.org/developers)
+- [IA Bots Policy](https://archive.org/developers/tos) — terms of service and acceptable use for automated access
