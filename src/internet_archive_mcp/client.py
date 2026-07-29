@@ -527,8 +527,9 @@ class ArchiveClient:
             if separator_idx is not None:
                 data_rows = rows[:separator_idx]
                 resume_rows = rows[separator_idx + 1:]
-                if resume_rows and len(resume_rows[0]) >= 1:
-                    parsed_resume_key = resume_rows[0][0]
+                if resume_rows and isinstance(resume_rows[0], list) and len(resume_rows[0]) >= 1:
+                    candidate = resume_rows[0][0]
+                    parsed_resume_key = candidate if isinstance(candidate, str) else None
             else:
                 data_rows = rows
 
