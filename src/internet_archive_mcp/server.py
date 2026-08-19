@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from internet_archive_mcp.client import ArchiveClient
 

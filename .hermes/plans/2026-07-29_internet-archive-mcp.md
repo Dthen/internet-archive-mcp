@@ -1029,7 +1029,7 @@ from __future__ import annotations
 import os
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from internet_archive_mcp.client import ArchiveClient
 
@@ -1644,10 +1644,8 @@ After SHIP IT, wire into `~/.hermes/config.yaml`:
 ```yaml
 mcp_servers:
   internet-archive:
-    command: /mnt/HC_Volume_105667182/kimbo/.hermes/hermes-agent/venv/bin/python3
+    command: /absolute/path/to/internet-archive-mcp/.venv/bin/python3
     args: ["-m", "internet_archive_mcp.server"]
-    env:
-      PYTHONPATH: /home/kimbo/projects/internet-archive-mcp/src
 ```
 
 Restart Hermes → tools appear as `mcp_internet_archive_*`.
