@@ -261,66 +261,66 @@ class TestSearchArchiveDocsDefensive:
 class TestAvailabilitySaveGuards:
     """wayback_availability, save_page, save_page_status need isinstance guards."""
 
-    async def test_availability_non_dict_raises(self):
-        """wayback_availability with non-dict response → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_availability_non_dict_raises(self):
+        """wayback_availability with non-dict response -> ValueError."""
+        def handler(request):
             return json_response(["unexpected"])
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.wayback_availability("http://example.com")
+            ac.wayback_availability("http://example.com")
 
-    async def test_availability_string_raises(self):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_availability_string_raises(self):
+        def handler(request):
             return json_response("error")
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.wayback_availability("http://example.com")
+            ac.wayback_availability("http://example.com")
 
-    async def test_save_page_non_dict_raises(self):
-        """save_page with non-dict response → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_save_page_non_dict_raises(self):
+        """save_page with non-dict response -> ValueError."""
+        def handler(request):
             return json_response(["unexpected"])
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.save_page("http://example.com", access_key="ak", secret_key="sk")
+            ac.save_page("http://example.com", access_key="ak", secret_key="sk")
 
-    async def test_save_page_status_non_dict_raises(self):
-        """save_page_status with non-dict response → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_save_page_status_non_dict_raises(self):
+        """save_page_status with non-dict response -> ValueError."""
+        def handler(request):
             return json_response("error string")
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.save_page_status("job123")
+            ac.save_page_status("job123")
 
-    async def test_availability_dict_ok(self):
+    def test_availability_dict_ok(self):
         """wayback_availability with valid dict should work."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({"archived_snapshots": {"closest": {"timestamp": "2020"}}})
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_availability("http://example.com")
+        result = ac.wayback_availability("http://example.com")
         assert "archived_snapshots" in result
 
-    async def test_save_page_dict_ok(self):
+    def test_save_page_dict_ok(self):
         """save_page with valid dict should work."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({"url": "http://example.com", "job_id": "abc"})
 
         ac = make_mock_client(handler)
-        result = await ac.save_page("http://example.com", access_key="ak", secret_key="sk")
+        result = ac.save_page("http://example.com", access_key="ak", secret_key="sk")
         assert result["job_id"] == "abc"
 
-    async def test_save_page_status_dict_ok(self):
+    def test_save_page_status_dict_ok(self):
         """save_page_status with valid dict should work."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({"status": "success"})
 
         ac = make_mock_client(handler)
-        result = await ac.save_page_status("job123")
+        result = ac.save_page_status("job123")
         assert result["status"] == "success"
 
 
@@ -475,63 +475,63 @@ class TestGetCollectionInfoDefensive:
 class TestWaybackFetchCacheCap:
     """wayback_fetch must not cache content larger than 2MB."""
 
-    async def test_small_content_cached(self):
+    def test_small_content_cached(self):
         """Content under 2MB should be cached normally."""
         call_count = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, text="small content")
+            return text_response("small content")
 
         ac = make_mock_client(handler)
-        r1 = await ac.wayback_fetch("http://example.com", timestamp="20200101")
-        r2 = await ac.wayback_fetch("http://example.com", timestamp="20200101")
+        r1 = ac.wayback_fetch("http://example.com", timestamp="20200101")
+        r2 = ac.wayback_fetch("http://example.com", timestamp="20200101")
         assert call_count == 1  # cached
         assert r1["content"] == r2["content"]
 
-    async def test_large_content_not_cached(self):
+    def test_large_content_not_cached(self):
         """Content over 2MB should NOT be cached but still returned."""
         call_count = 0
         large_content = "X" * (2 * 1024 * 1024 + 1)  # 2MB + 1 byte
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, text=large_content)
+            return text_response(large_content)
 
         ac = make_mock_client(handler)
-        r1 = await ac.wayback_fetch("http://example.com", timestamp="20200101")
-        r2 = await ac.wayback_fetch("http://example.com", timestamp="20200101")
+        r1 = ac.wayback_fetch("http://example.com", timestamp="20200101")
+        r2 = ac.wayback_fetch("http://example.com", timestamp="20200101")
         assert call_count == 2  # NOT cached — two HTTP calls
         assert r1["content_length"] == len(large_content)
         assert r2["content_length"] == len(large_content)
 
-    async def test_exactly_2mb_cached(self):
+    def test_exactly_2mb_cached(self):
         """Content exactly 2MB should be cached (at the boundary)."""
         call_count = 0
         content_2mb = "Y" * (2 * 1024 * 1024)  # exactly 2MB
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, text=content_2mb)
+            return text_response(content_2mb)
 
         ac = make_mock_client(handler)
-        r1 = await ac.wayback_fetch("http://example.com", timestamp="20200101")
-        r2 = await ac.wayback_fetch("http://example.com", timestamp="20200101")
+        r1 = ac.wayback_fetch("http://example.com", timestamp="20200101")
+        r2 = ac.wayback_fetch("http://example.com", timestamp="20200101")
         assert call_count == 1  # cached at boundary
         assert r1["content_length"] == 2 * 1024 * 1024
 
-    async def test_large_content_still_returned_full(self):
+    def test_large_content_still_returned_full(self):
         """Large content should still be returned to the caller in full."""
         large_content = "Z" * (2 * 1024 * 1024 + 100)
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, text=large_content)
+        def handler(request):
+            return text_response(large_content)
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_fetch(
+        result = ac.wayback_fetch(
             "http://example.com", timestamp="20200101", char_limit=len(large_content) + 1000
         )
         assert result["content_length"] == len(large_content)
