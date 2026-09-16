@@ -1,50 +1,27 @@
-"""Tests for server registration and startup."""
+"""Tests for server registration and startup (era rewrite, T17b).
+
+Ported from the legacy fastmcp-internals suite (mcp object, _registered_tools
+via list_tools(), main() callable). Era replacements (count preserved 4→4):
+  ① import smoke under $PYH (no fastmcp in the graph);
+  ② len(TOOLS) == 13 + names-set == the 13 expected (verbatim name list);
+  ③ callable(main) AND not a coroutine;
+  ④ SERVER_INFO == {"name":"internet-archive","version":"0.3.0"}.
+"""
 
 from __future__ import annotations
 
-import asyncio
+import inspect
 
-
-def _registered_tools(server):
-    """Return the server's {name: tool} dict, or {} if internals changed."""
-    # fastmcp 3.x exposes the public async list_tools(); prefer it, fall
-    # back to the pre-3.x private _tool_manager._tools dict for older envs.
-    list_tools = getattr(server, "list_tools", None)
-    if list_tools is not None:
-        try:
-            tools = asyncio.run(list_tools())
-            return {t.name: t for t in tools}
-        except Exception:
-            pass
-    tool_manager = getattr(server, "_tool_manager", None)
-    tools = getattr(tool_manager, "_tools", None) if tool_manager is not None else None
-    return tools if isinstance(tools, dict) else {}
-
-
-def test_server_has_13_tools():
-    """Verify all 13 tools are registered."""
-    from internet_archive_mcp.server import mcp
-
-    tools = _registered_tools(mcp)
-    assert len(tools) == 13, f"Expected 13 tools, got {len(tools)}: {list(tools.keys())}"
+import internet_archive_mcp.server as server_module
 
 
 def test_server_imports_cleanly():
-    """Server module imports without errors."""
+    """Server module imports without errors (no fastmcp in the graph)."""
     import internet_archive_mcp.server  # noqa: F401
 
 
-def test_main_function_exists():
-    """main() is callable."""
-    from internet_archive_mcp.server import main
-
-    assert callable(main)
-
-
-def test_tool_names():
-    """All expected tool names are registered."""
-    from internet_archive_mcp.server import mcp
-
+def test_server_has_13_tools():
+    """Verify the public TOOLS surface holds exactly 13 tools with the expected names."""
     expected = {
         "search_archive",
         "get_item_metadata",
@@ -60,5 +37,22 @@ def test_tool_names():
         "save_page",
         "save_page_status",
     }
-    actual = set(_registered_tools(mcp).keys())
+    actual = {t["name"] for t in server_module.TOOLS}
+    assert len(server_module.TOOLS) == 13, (
+        f"Expected 13 tools, got {len(server_module.TOOLS)}: {list(actual)}"
+    )
     assert actual == expected
+
+
+def test_main_is_callable_not_coroutine():
+    """main() is callable and NOT a coroutine (sync stdio loop)."""
+    assert callable(server_module.main)
+    assert not inspect.iscoroutinefunction(server_module.main)
+
+
+def test_server_info():
+    """SERVER_INFO carries name + era target version 0.3.0 (D7)."""
+    assert server_module.SERVER_INFO == {
+        "name": "internet-archive",
+        "version": "0.3.0",
+    }
