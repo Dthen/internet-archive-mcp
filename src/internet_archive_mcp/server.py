@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Stdlib stateless-era (2026-07-28) MCP server for the Internet Archive."""
-import json, sys
+import json, os, sys
+import urllib.error
 from pathlib import Path
 
 if hasattr(sys.stdin, "reconfigure"):            # binary/undecodable bytes must not kill the loop
@@ -58,14 +59,240 @@ def _load_tools():
 TOOLS = _load_tools()   # D4: frozen surface — edit the capture, never this projection
 
 
-def handle_call(name, arguments):
-    """Dispatch a tools/call by name to its handler (T06–T07 installs the 13).
+# ---------------------------------------------------------------------------
+# Tool handlers (T07) — thin sync wrappers over T03's client
+# ---------------------------------------------------------------------------
+# Argument mapping is byte-copied from the legacy tag server.py
+# (git show pre-migration/20260914:src/internet_archive_mcp/server.py, l.54-63 …
+# l.403-407): same client method, same positional first arg, same keyword names,
+# same defaults. Handlers take the raw `arguments` dict from the wire and fall
+# back to the legacy signature defaults via .get(). TOOLS is read-only here
+# (T06 review note): no handler may touch the shared golden-backed schema objects.
 
-    T05 placeholder: every tool is unknown, so the §5 fleet rule for unknown
-    tools is already the live path — return an {"error": ...} dict (⇒ isError
-    true at the dispatch site), never raise.
+
+def _h_search_archive(a):
+    try:
+        return _client.search_archive(
+            a["query"],
+            mediatype=a.get("mediatype"),
+            collection=a.get("collection"),
+            fields=a.get("fields"),
+            sort=a.get("sort"),
+            rows=a.get("rows", 20),
+            page=a.get("page", 1),
+        )
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_get_item_metadata(a):
+    try:
+        return _client.get_item_metadata(
+            a["identifier"], include_files=a.get("include_files", False)
+        )
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_list_item_files(a):
+    try:
+        return _client.list_item_files(
+            a["identifier"], format_filter=a.get("format_filter")
+        )
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_get_item_reviews(a):
+    try:
+        return _client.get_item_reviews(a["identifier"])
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_wayback_snapshots(a):
+    try:
+        return _client.wayback_snapshots(
+            a["url"],
+            match_type=a.get("match_type", "exact"),
+            from_year=a.get("from_year"),
+            to_year=a.get("to_year"),
+            limit=a.get("limit", 25),
+            filter_expr=a.get("filter_expr"),
+            collapse=a.get("collapse"),
+            fields=a.get("fields"),
+            page=a.get("page"),
+            show_resume_key=a.get("show_resume_key", False),
+            resume_key=a.get("resume_key"),
+            newest=a.get("newest", False),
+            fast_latest=a.get("fast_latest", False),
+        )
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_wayback_availability(a):
+    try:
+        return _client.wayback_availability(a["url"])
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_wayback_fetch(a):
+    try:
+        return _client.wayback_fetch(
+            a["url"],
+            timestamp=a.get("timestamp"),
+            raw=a.get("raw", True),
+            char_limit=a.get("char_limit", 50000),
+        )
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_browse_collection(a):
+    try:
+        return _client.browse_collection(
+            a["collection"], rows=a.get("rows", 20), page=a.get("page", 1),
+            sort=a.get("sort"),
+        )
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_get_collection_info(a):
+    try:
+        return _client.get_collection_info(a["identifier"])
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_get_item_thumbnail(a):
+    # Legacy tag l.318-321: sync, no HTTP — keeps ONLY the first except tuple (no URLError arm).
+    try:
+        return _client.get_item_thumbnail_url(a["identifier"])
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+
+
+def _h_search_archive_deep(a):
+    try:
+        return _client.search_archive_deep(
+            a["query"], fields=a.get("fields"), sorts=a.get("sorts"),
+            count=a.get("count", 100), cursor=a.get("cursor"),
+            total_only=a.get("total_only", False),
+        )
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_save_page(a):
+    # Env-var contract (_chain verified fact table; pinned by T18): IA_ACCESS_KEY /
+    # IA_SECRET_KEY are read at CALL time, not import time — legacy tag l.381-382.
+    ak = a.get("access_key") or os.environ.get("IA_ACCESS_KEY")
+    sk = a.get("secret_key") or os.environ.get("IA_SECRET_KEY")
+    try:
+        return _client.save_page(a["url"], access_key=ak, secret_key=sk)
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+def _h_save_page_status(a):
+    try:
+        return _client.save_page_status(a["job_id"])
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return f"Error: {e}"
+    # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
+    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+        return f"Error: API request failed — {e}"
+
+
+_dispatch = {
+    "search_archive": _h_search_archive,
+    "get_item_metadata": _h_get_item_metadata,
+    "list_item_files": _h_list_item_files,
+    "get_item_reviews": _h_get_item_reviews,
+    "wayback_snapshots": _h_wayback_snapshots,
+    "wayback_availability": _h_wayback_availability,
+    "wayback_fetch": _h_wayback_fetch,
+    "browse_collection": _h_browse_collection,
+    "get_collection_info": _h_get_collection_info,
+    "get_item_thumbnail": _h_get_item_thumbnail,
+    "search_archive_deep": _h_search_archive_deep,
+    "save_page": _h_save_page,
+    "save_page_status": _h_save_page_status,
+}
+
+
+def handle_call(name, arguments):
+    """Dispatch a tools/call by name to its handler (T07 installs the 13).
+
+    Unknown tool → {"error": ...} dict (⇒ isError true at the dispatch site,
+    REFERENCE §5 fleet rule), never raise. Missing required arguments surface
+    as KeyError *inside* the handler's own fold (legacy had framework
+    validation upstream; the fold text "Error: '<name>'" is the closest
+    legacy-shaped result). Exceptions escaping the handler folds entirely are
+    dispatch-level → -32603 at the tools/call arm.
     """
-    return {"error": f"Unknown tool: {name}"}
+    handler = _dispatch.get(name)
+    if handler is None:
+        return {"error": f"Unknown tool: {name}"}
+    return handler(arguments)
+
+
+# ---------------------------------------------------------------------------
+# Wire encoding (T07) — REFERENCE §5, derive-from-legacy (golden/legacy-behavior.json)
+# ---------------------------------------------------------------------------
+
+def encode_tool_result(result):
+    """The ONLY wire-shaping point: tool return value → list of content blocks.
+
+    structuredContent is deliberately ABSENT on every response — §4 trap/D3:
+    no tool declares an outputSchema, so a structuredContent block would make
+    strict 2.0 clients reject the text result.
+    """
+    if isinstance(result, list) and not result:
+        # DEVIATION from REFERENCE §5 (justified: legacy fastmcp emits content:[] for empty-list results — golden/legacy-behavior.json case 'snapshots_empty'; matching legacy bytes preserves consumer shape)
+        return []
+    if isinstance(result, str):
+        return [{"type": "text", "text": result}]   # str passthrough verbatim (§5 rule, R3: not tagged)
+    # dict / non-empty list: COMPACT non-ASCII-preserving JSON (legacy fastmcp
+    # framework encoding — §5 derive-from-legacy rule, fixtures pin the bytes;
+    # NOT tagged per R3).
+    return [{"type": "text", "text": json.dumps(result, separators=(",", ":"), ensure_ascii=False)}]
 
 
 def send(resp):
@@ -97,12 +324,11 @@ def main():
                 continue
             try:
                 result = handle_call(params["name"], params.get("arguments", {}))
+                # §5 rule: isError fires ONLY for {"error": ...} DICTS (unknown-tool
+                # dispatch). Legacy's "Error: …" strings are successful results —
+                # probe-verified isError: False (golden/legacy-behavior.json).
                 is_err = isinstance(result, dict) and ("error" in result or "transport_error" in result)
-                # NOTE (T05): the text encoding below is REFERENCE §5's generic snippet
-                # verbatim; D4's byte-freeze derives the FINAL encoding from the legacy
-                # framework server (compact, ensure_ascii=False; str passthrough; the one
-                # content:[] DEVIATION tag) — that lands with the handlers at T06–T07.
-                payload: dict = {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+                payload: dict = {"content": encode_tool_result(result)}
                 if is_err:
                     payload["isError"] = True
                 send({"jsonrpc":"2.0","id":rid,"result":era_result(payload)})
