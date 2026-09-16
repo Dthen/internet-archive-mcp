@@ -397,7 +397,7 @@ class TestSearchArchive:
 
 
 class TestSearchArchiveDeep:
-    async def test_returns_items_and_cursor(self) -> None:
+    def test_returns_items_and_cursor(self) -> None:
         scrape_resp = {
             "items": [{"identifier": "a"}, {"identifier": "b"}],
             "total": 500,
@@ -405,45 +405,45 @@ class TestSearchArchiveDeep:
             "cursor": "abc123",
         }
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=scrape_resp)
+        def handler(request):
+            return json_response(scrape_resp)
 
         ac = make_client(handler)
-        result = await ac.search_archive_deep("test")
+        result = ac.search_archive_deep("test")
         assert result["items"] == [{"identifier": "a"}, {"identifier": "b"}]
         assert result["total"] == 500
         assert result["count"] == 2
         assert result["cursor"] == "abc123"
 
-    async def test_no_cursor_when_absent(self) -> None:
+    def test_no_cursor_when_absent(self) -> None:
         scrape_resp = {"items": [], "total": 0, "count": 0}
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=scrape_resp)
+        def handler(request):
+            return json_response(scrape_resp)
 
         ac = make_client(handler)
-        result = await ac.search_archive_deep("test")
+        result = ac.search_archive_deep("test")
         assert "cursor" not in result
 
-    async def test_count_below_100_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_count_below_100_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="count must be >= 100"):
-            await ac.search_archive_deep("test", count=50)
+            ac.search_archive_deep("test", count=50)
 
-    async def test_empty_query_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_empty_query_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.search_archive_deep("")
+            ac.search_archive_deep("")
 
-    async def test_params_include_fields_and_sorts(self) -> None:
+    def test_params_include_fields_and_sorts(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json={"items": [], "total": 0, "count": 0})
+            return json_response({"items": [], "total": 0, "count": 0})
 
         ac = make_client(handler)
-        await ac.search_archive_deep(
+        ac.search_archive_deep(
             "test", fields=["identifier", "title"], sorts=["downloads desc"]
         )
         url = seen["url"]
@@ -591,33 +591,33 @@ class TestGetItemReviews:
 
 
 class TestBrowseCollection:
-    async def test_wraps_search_correctly(self) -> None:
+    def test_wraps_search_correctly(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.browse_collection("opensource")
+        result = ac.browse_collection("opensource")
         assert result["numFound"] == 100
         assert "collection" in seen["url"]
         assert "opensource" in seen["url"]
 
-    async def test_empty_collection_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_empty_collection_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.browse_collection("")
+            ac.browse_collection("")
 
-    async def test_default_sort_is_downloads(self) -> None:
+    def test_default_sort_is_downloads(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        await ac.browse_collection("opensource")
+        ac.browse_collection("opensource")
         assert "downloads" in seen["url"]
 
 
@@ -910,27 +910,27 @@ class TestSearchArchiveWarning:
 
 
 class TestSearchArchiveDeepTotalOnly:
-    async def test_total_only_param_passed(self) -> None:
+    def test_total_only_param_passed(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json={"total": 42, "count": 0, "items": []})
+            return json_response({"total": 42, "count": 0, "items": []})
 
         ac = make_client(handler)
-        result = await ac.search_archive_deep("test", total_only=True)
+        result = ac.search_archive_deep("test", total_only=True)
         assert "total_only=true" in seen["url"]
         assert result["total"] == 42
 
-    async def test_total_only_false_not_in_params(self) -> None:
+    def test_total_only_false_not_in_params(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json={"items": [], "total": 0, "count": 0})
+            return json_response({"items": [], "total": 0, "count": 0})
 
         ac = make_client(handler)
-        await ac.search_archive_deep("test", total_only=False)
+        ac.search_archive_deep("test", total_only=False)
         assert "total_only" not in seen["url"]
 
 
