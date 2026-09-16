@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 
 from internet_archive_mcp.client import ArchiveClient
-from conftest import make_mock_client, json_response
+from conftest import make_mock_client, json_response, text_response
 
 
 # ---------------------------------------------------------------------------
@@ -17,9 +16,9 @@ from conftest import make_mock_client, json_response
 class TestCDXNonListRows:
     """CDX data rows that are not lists must be skipped, not crash."""
 
-    async def test_cdx_non_list_row_skipped(self):
+    def test_cdx_non_list_row_skipped(self):
         """Non-list row (e.g. string) in CDX data should be skipped."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response([
                 ["urlkey", "timestamp"],
                 "not-a-list",  # non-list row
@@ -27,13 +26,13 @@ class TestCDXNonListRows:
             ])
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert len(result) == 1
         assert result[0]["timestamp"] == "20200101"
 
-    async def test_cdx_dict_row_skipped(self):
+    def test_cdx_dict_row_skipped(self):
         """Dict row in CDX data should be skipped."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response([
                 ["urlkey", "timestamp"],
                 {"urlkey": "x", "timestamp": "y"},  # dict, not list
@@ -41,12 +40,12 @@ class TestCDXNonListRows:
             ])
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert len(result) == 1
 
-    async def test_cdx_int_row_skipped(self):
+    def test_cdx_int_row_skipped(self):
         """Integer row in CDX data should be skipped."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response([
                 ["urlkey", "timestamp"],
                 42,
@@ -54,12 +53,12 @@ class TestCDXNonListRows:
             ])
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert len(result) == 1
 
-    async def test_cdx_non_list_row_show_resume_key(self):
+    def test_cdx_non_list_row_show_resume_key(self):
         """Non-list rows with show_resume_key=True should also be skipped."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response([
                 ["urlkey", "timestamp"],
                 "garbage",
@@ -67,13 +66,13 @@ class TestCDXNonListRows:
             ])
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com", show_resume_key=True)
+        result = ac.wayback_snapshots("example.com", show_resume_key=True)
         assert len(result["snapshots"]) == 1
         assert result["resume_key"] is None
 
-    async def test_cdx_all_non_list_rows(self):
+    def test_cdx_all_non_list_rows(self):
         """All non-list rows → empty result."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response([
                 ["urlkey", "timestamp"],
                 "bad",
@@ -82,7 +81,7 @@ class TestCDXNonListRows:
             ])
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert result == []
 
 
@@ -94,33 +93,33 @@ class TestCDXNonListRows:
 class TestListItemFilesDefensive:
     """list_item_files must handle non-list files and non-dict entries."""
 
-    async def test_files_non_list_string(self):
+    def test_files_non_list_string(self):
         """files key is a string → should return []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "files": "not-a-list",
             })
 
         ac = make_mock_client(handler)
-        result = await ac.list_item_files("test")
+        result = ac.list_item_files("test")
         assert result == []
 
-    async def test_files_non_list_dict(self):
+    def test_files_non_list_dict(self):
         """files key is a dict → should return []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "files": {"name": "a.txt"},
             })
 
         ac = make_mock_client(handler)
-        result = await ac.list_item_files("test")
+        result = ac.list_item_files("test")
         assert result == []
 
-    async def test_files_entries_non_dict_skipped(self):
+    def test_files_entries_non_dict_skipped(self):
         """Non-dict entries in files list should be skipped."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "files": [
@@ -132,13 +131,13 @@ class TestListItemFilesDefensive:
             })
 
         ac = make_mock_client(handler)
-        result = await ac.list_item_files("test")
+        result = ac.list_item_files("test")
         assert len(result) == 1
         assert result[0]["name"] == "good.pdf"
 
-    async def test_files_entries_non_dict_with_filter(self):
+    def test_files_entries_non_dict_with_filter(self):
         """Non-dict entries should be skipped even with format_filter."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "files": [
@@ -149,7 +148,7 @@ class TestListItemFilesDefensive:
             })
 
         ac = make_mock_client(handler)
-        result = await ac.list_item_files("test", format_filter="PDF")
+        result = ac.list_item_files("test", format_filter="PDF")
         assert len(result) == 1
         assert result[0]["name"] == "a.pdf"
 
@@ -162,44 +161,41 @@ class TestListItemFilesDefensive:
 class TestSearchArchiveDeepGuard:
     """search_archive_deep must guard against non-dict JSON responses."""
 
-    async def test_list_response_raises(self):
+    def test_list_response_raises(self):
         """Scrape API returning a list → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response(["unexpected"])
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.search_archive_deep("test")
+            ac.search_archive_deep("test")
 
-    async def test_string_response_raises(self):
+    def test_string_response_raises(self):
         """Scrape API returning a string → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response("error")
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.search_archive_deep("test")
+            ac.search_archive_deep("test")
 
-    async def test_int_response_raises(self):
+    def test_int_response_raises(self):
         """Scrape API returning an int → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response(500)
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.search_archive_deep("test")
+            ac.search_archive_deep("test")
 
-    async def test_null_response_raises(self):
+    def test_null_response_raises(self):
         """Scrape API returning null → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, content=b"null",
-                headers={"Content-Type": "application/json"},
-            )
+        def handler(request):
+            return text_response("null", headers={"Content-Type": "application/json"})
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.search_archive_deep("test")
+            ac.search_archive_deep("test")
 
 
 # ---------------------------------------------------------------------------
@@ -210,31 +206,31 @@ class TestSearchArchiveDeepGuard:
 class TestSearchArchiveDocsDefensive:
     """search_archive must handle non-list docs and non-dict entries."""
 
-    async def test_docs_non_list_string(self):
+    def test_docs_non_list_string(self):
         """docs is a string → should be treated as []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "response": {"numFound": 0, "start": 0, "docs": "bad"}
             })
 
         ac = make_mock_client(handler)
-        result = await ac.search_archive("test")
+        result = ac.search_archive("test")
         assert result["docs"] == []
 
-    async def test_docs_non_list_int(self):
+    def test_docs_non_list_int(self):
         """docs is an int → should be treated as []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "response": {"numFound": 0, "start": 0, "docs": 42}
             })
 
         ac = make_mock_client(handler)
-        result = await ac.search_archive("test")
+        result = ac.search_archive("test")
         assert result["docs"] == []
 
-    async def test_docs_entries_non_dict_skipped(self):
+    def test_docs_entries_non_dict_skipped(self):
         """Non-dict entries in docs should be skipped during fav-* trim."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "response": {
                     "numFound": 3,
@@ -248,7 +244,7 @@ class TestSearchArchiveDocsDefensive:
             })
 
         ac = make_mock_client(handler)
-        result = await ac.search_archive("test")
+        result = ac.search_archive("test")
         # Non-dict entries should be skipped in the fav-* trim loop
         # but still present in docs (we only guard the loop, not filter docs)
         # Actually the fix is: guard the loop body with isinstance check
