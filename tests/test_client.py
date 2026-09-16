@@ -312,86 +312,86 @@ SEARCH_RESPONSE = {
 
 
 class TestSearchArchive:
-    async def test_returns_parsed_docs_with_total_pages(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+    def test_returns_parsed_docs_with_total_pages(self) -> None:
+        def handler(request):
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.search_archive("test query", rows=20)
+        result = ac.search_archive("test query", rows=20)
         assert result["numFound"] == 100
         assert result["start"] == 0
         assert len(result["docs"]) == 1
         assert result["total_pages"] == 5  # ceil(100/20)
 
-    async def test_empty_query_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_empty_query_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.search_archive("")
+            ac.search_archive("")
 
-    async def test_whitespace_only_query_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_whitespace_only_query_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.search_archive("   ")
+            ac.search_archive("   ")
 
-    async def test_fav_trimmed_from_collections(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+    def test_fav_trimmed_from_collections(self) -> None:
+        def handler(request):
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.search_archive("test")
+        result = ac.search_archive("test")
         assert result["docs"][0]["collection"] == ["opensource"]
 
-    async def test_mediatype_prepended_to_query(self) -> None:
+    def test_mediatype_prepended_to_query(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        await ac.search_archive("cats", mediatype="texts")
+        ac.search_archive("cats", mediatype="texts")
         assert "mediatype%3A%28texts%29+AND+cats" in seen["url"] or \
                "mediatype:(texts) AND cats" in seen["url"] or \
                "mediatype%3A(texts)%20AND%20cats" in seen["url"]
 
-    async def test_collection_prepended_to_query(self) -> None:
+    def test_collection_prepended_to_query(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        await ac.search_archive("dogs", collection="opensource")
+        ac.search_archive("dogs", collection="opensource")
         assert "collection" in seen["url"]
         assert "opensource" in seen["url"]
 
-    async def test_correct_params_built(self) -> None:
+    def test_correct_params_built(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        await ac.search_archive("test", rows=10, page=2, sort=["downloads desc"])
+        ac.search_archive("test", rows=10, page=2, sort=["downloads desc"])
         url = seen["url"]
         assert "advancedsearch.php" in url
         assert "output=json" in url
         assert "rows=10" in url
         assert "page=2" in url
 
-    async def test_caching(self) -> None:
+    def test_caching(self) -> None:
         call_count = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        r1 = await ac.search_archive("cached query")
-        r2 = await ac.search_archive("cached query")
+        r1 = ac.search_archive("cached query")
+        r2 = ac.search_archive("cached query")
         assert call_count == 1
         assert r1 == r2
 
@@ -882,7 +882,7 @@ class TestDownloadUrl:
 
 
 class TestSearchArchiveWarning:
-    async def test_warning_when_numfound_exceeds_10000(self) -> None:
+    def test_warning_when_numfound_exceeds_10000(self) -> None:
         big_response = {
             "response": {
                 "numFound": 50000,
@@ -891,21 +891,21 @@ class TestSearchArchiveWarning:
             }
         }
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=big_response)
+        def handler(request):
+            return json_response(big_response)
 
         ac = make_client(handler)
-        result = await ac.search_archive("big query")
+        result = ac.search_archive("big query")
         assert "_warning" in result
         assert "10,000" in result["_warning"]
         assert "search_archive_deep" in result["_warning"]
 
-    async def test_no_warning_when_under_10000(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=SEARCH_RESPONSE)
+    def test_no_warning_when_under_10000(self) -> None:
+        def handler(request):
+            return json_response(SEARCH_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.search_archive("small query")
+        result = ac.search_archive("small query")
         assert "_warning" not in result
 
 
