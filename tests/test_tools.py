@@ -1,11 +1,35 @@
-"""Tests for MCP tool functions in the server module."""
+"""Tests for MCP tool functions in the server module.
+
+Ported to era dispatch (T17a): each test drives the public ``handle_call`` entry
+point and asserts on the WIRE payload (``payload["content"]`` blocks), not the
+Python function return value. This strengthens the suite from "python function
+returns object" to "wire text bytes correct" — exactly what the
+golden/legacy-behavior.json shapes pin.
+"""
 
 from __future__ import annotations
 
-import httpx
+import json
 
 import internet_archive_mcp.server as server_module
-from conftest import make_mock_client, json_response
+from conftest import make_mock_client, json_response, text_response
+
+
+def _call(name, **args):
+    """Call a tool via the public dispatch entry point and return the wire payload.
+
+    Replicates the tools/call arm in ``server.main()``: ``handle_call`` returns
+    the raw handler result; ``encode_tool_result`` converts it to content blocks;
+    ``isError`` fires only for ``{"error": ...}`` dicts (unknown-tool dispatch),
+    never for "Error: ..." strings (legacy probe-verified ``isError: False``).
+    """
+    result = server_module.handle_call(name, args)
+    is_err = isinstance(result, dict) and ("error" in result or "transport_error" in result)
+    content = server_module.encode_tool_result(result)
+    payload = {"content": content}
+    if is_err:
+        payload["isError"] = True
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -14,8 +38,8 @@ from conftest import make_mock_client, json_response
 
 
 class TestSearchArchiveTool:
-    async def test_returns_results(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_results(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "response": {
                     "numFound": 1,
@@ -25,52 +49,54 @@ class TestSearchArchiveTool:
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.search_archive("test query")
+        payload = _call("search_archive", query="test query")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert result["numFound"] == 1
         assert len(result["docs"]) == 1
 
-    async def test_empty_query_returns_error(self, monkeypatch):
+    def test_empty_query_returns_error(self, monkeypatch):
         monkeypatch.setattr(server_module, "_client", make_mock_client(lambda r: json_response({})))
-        result = await server_module.search_archive("")
-        assert isinstance(result, str)
-        assert result.startswith("Error:")
+        payload = _call("search_archive", query="")
+        text = payload["content"][0]["text"]
+        assert text.startswith("Error:")
 
-    async def test_api_error_returns_error_string(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(500, text="Internal Server Error")
+    def test_api_error_returns_error_string(self, monkeypatch):
+        def handler(request):
+            return (500, {}, b"Internal Server Error")
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.search_archive("test")
-        assert isinstance(result, str)
-        assert result.startswith("Error:")
+        payload = _call("search_archive", query="test")
+        text = payload["content"][0]["text"]
+        assert text.startswith("Error:")
 
 
 class TestGetItemMetadataTool:
-    async def test_returns_dict(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_dict(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test-item", "title": "Test Item"},
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.get_item_metadata("test-item")
+        payload = _call("get_item_metadata", identifier="test-item")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert result["metadata"]["identifier"] == "test-item"
 
-    async def test_not_found_returns_error(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_not_found_returns_error(self, monkeypatch):
+        def handler(request):
             return json_response({})
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.get_item_metadata("nonexistent")
-        assert isinstance(result, str)
-        assert "Error:" in result
+        payload = _call("get_item_metadata", identifier="nonexistent")
+        text = payload["content"][0]["text"]
+        assert "Error:" in text
 
 
 class TestListItemFilesTool:
-    async def test_returns_list(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_list(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test-item"},
                 "files": [
@@ -80,12 +106,13 @@ class TestListItemFilesTool:
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.list_item_files("test-item")
+        payload = _call("list_item_files", identifier="test-item")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, list)
         assert len(result) == 2
 
-    async def test_format_filter_works(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_format_filter_works(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test-item"},
                 "files": [
@@ -95,15 +122,16 @@ class TestListItemFilesTool:
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.list_item_files("test-item", format_filter="VBR MP3")
+        payload = _call("list_item_files", identifier="test-item", format_filter="VBR MP3")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["name"] == "file1.mp3"
 
 
 class TestGetItemReviewsTool:
-    async def test_returns_list(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_list(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test-item"},
                 "reviews": [
@@ -112,46 +140,51 @@ class TestGetItemReviewsTool:
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.get_item_reviews("test-item")
+        payload = _call("get_item_reviews", identifier="test-item")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, list)
         assert len(result) == 1
 
-    async def test_empty_reviews_returns_empty_list(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_empty_reviews_returns_empty_list(self, monkeypatch):
+        """R3 tagged branch: empty-list result emits ``content: []`` (zero blocks).
+
+        Cross-ref golden/legacy-behavior.json case ``snapshots_empty``.
+        """
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test-item"},
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.get_item_reviews("test-item")
-        assert isinstance(result, list)
-        assert result == []
+        payload = _call("get_item_reviews", identifier="test-item")
+        assert payload["content"] == []
 
 
 class TestWaybackSnapshotsTool:
-    async def test_returns_list(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_list(self, monkeypatch):
+        def handler(request):
             return json_response([
                 ["urlkey", "timestamp", "original", "statuscode"],
                 ["com,example)/", "20200101", "http://example.com/", "200"],
             ])
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.wayback_snapshots("example.com")
+        payload = _call("wayback_snapshots", url="example.com")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["statuscode"] == "200"
 
-    async def test_domain_match_type_returns_error(self, monkeypatch):
+    def test_domain_match_type_returns_error(self, monkeypatch):
         monkeypatch.setattr(server_module, "_client", make_mock_client(lambda r: json_response([])))
-        result = await server_module.wayback_snapshots("example.com", match_type="domain")
-        assert isinstance(result, str)
-        assert "Error:" in result
+        payload = _call("wayback_snapshots", url="example.com", match_type="domain")
+        text = payload["content"][0]["text"]
+        assert "Error:" in text
 
 
 class TestWaybackAvailabilityTool:
-    async def test_returns_dict(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_dict(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "archived_snapshots": {
                     "closest": {
@@ -162,28 +195,31 @@ class TestWaybackAvailabilityTool:
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.wayback_availability("http://example.com")
+        payload = _call("wayback_availability", url="http://example.com")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert "archived_snapshots" in result
 
 
 class TestWaybackFetchTool:
-    async def test_returns_content_dict(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, text="<html>Hello World</html>")
+    def test_returns_content_dict(self, monkeypatch):
+        def handler(request):
+            return text_response("<html>Hello World</html>")
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.wayback_fetch("http://example.com")
+        payload = _call("wayback_fetch", url="http://example.com")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert "content" in result
         assert result["truncated"] is False
 
-    async def test_truncated_flag(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, text="x" * 100000)
+    def test_truncated_flag(self, monkeypatch):
+        def handler(request):
+            return text_response("x" * 100000)
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.wayback_fetch("http://example.com", char_limit=100)
+        payload = _call("wayback_fetch", url="http://example.com", char_limit=100)
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert result["truncated"] is True
         assert len(result["content"]) == 100
@@ -196,8 +232,8 @@ class TestWaybackFetchTool:
 
 
 class TestBrowseCollectionTool:
-    async def test_returns_results(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_results(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "response": {
                     "numFound": 2,
@@ -210,20 +246,21 @@ class TestBrowseCollectionTool:
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.browse_collection("opensource_audio")
+        payload = _call("browse_collection", collection="opensource_audio")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert result["numFound"] == 2
 
-    async def test_empty_collection_returns_error(self, monkeypatch):
+    def test_empty_collection_returns_error(self, monkeypatch):
         monkeypatch.setattr(server_module, "_client", make_mock_client(lambda r: json_response({})))
-        result = await server_module.browse_collection("")
-        assert isinstance(result, str)
-        assert "Error:" in result
+        payload = _call("browse_collection", collection="")
+        text = payload["content"][0]["text"]
+        assert "Error:" in text
 
 
 class TestGetCollectionInfoTool:
-    async def test_returns_metadata(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_metadata(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "metadata": {
                     "identifier": "opensource_audio",
@@ -233,27 +270,28 @@ class TestGetCollectionInfoTool:
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.get_collection_info("opensource_audio")
+        payload = _call("get_collection_info", identifier="opensource_audio")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert result["metadata"]["mediatype"] == "collection"
 
 
 class TestGetItemThumbnailTool:
     def test_returns_url_string(self, monkeypatch):
-        result = server_module.get_item_thumbnail("nightofthelivingdead")
-        assert isinstance(result, str)
-        assert "nightofthelivingdead" in result
-        assert result.startswith("https://archive.org/services/img/")
+        payload = _call("get_item_thumbnail", identifier="nightofthelivingdead")
+        text = payload["content"][0]["text"]
+        assert "nightofthelivingdead" in text
+        assert text.startswith("https://archive.org/services/img/")
 
     def test_empty_identifier_returns_error(self, monkeypatch):
-        result = server_module.get_item_thumbnail("")
-        assert isinstance(result, str)
-        assert "Error:" in result
+        payload = _call("get_item_thumbnail", identifier="")
+        text = payload["content"][0]["text"]
+        assert "Error:" in text
 
 
 class TestSearchArchiveDeepTool:
-    async def test_returns_items(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_items(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "items": [{"identifier": "item1"}, {"identifier": "item2"}],
                 "total": 500,
@@ -262,16 +300,17 @@ class TestSearchArchiveDeepTool:
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.search_archive_deep("jazz")
+        payload = _call("search_archive_deep", query="jazz")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert len(result["items"]) == 2
         assert result["cursor"] == "abc123"
 
-    async def test_low_count_returns_error(self, monkeypatch):
+    def test_low_count_returns_error(self, monkeypatch):
         monkeypatch.setattr(server_module, "_client", make_mock_client(lambda r: json_response({})))
-        result = await server_module.search_archive_deep("test", count=50)
-        assert isinstance(result, str)
-        assert "Error:" in result
+        payload = _call("search_archive_deep", query="test", count=50)
+        text = payload["content"][0]["text"]
+        assert "Error:" in text
 
 
 # ---------------------------------------------------------------------------
@@ -280,64 +319,65 @@ class TestSearchArchiveDeepTool:
 
 
 class TestSavePageTool:
-    async def test_no_keys_returns_guidance_error(self, monkeypatch):
+    def test_no_keys_returns_guidance_error(self, monkeypatch):
         monkeypatch.delenv("IA_ACCESS_KEY", raising=False)
         monkeypatch.delenv("IA_SECRET_KEY", raising=False)
         monkeypatch.setattr(server_module, "_client", make_mock_client(lambda r: json_response({})))
-        result = await server_module.save_page("http://example.com")
-        assert isinstance(result, str)
-        assert "Error:" in result
-        assert "authentication" in result.lower() or "s3.php" in result
+        payload = _call("save_page", url="http://example.com")
+        text = payload["content"][0]["text"]
+        assert "Error:" in text
+        assert "authentication" in text.lower() or "s3.php" in text
 
-    async def test_with_keys_calls_api(self, monkeypatch):
+    def test_with_keys_calls_api(self, monkeypatch):
         seen_headers: dict[str, str] = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen_headers["auth"] = request.headers.get("authorization", "")
             return json_response({"url": "http://example.com", "job_id": "abc"})
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.save_page(
-            "http://example.com", access_key="AK", secret_key="SK"
-        )
+        payload = _call("save_page", url="http://example.com", access_key="AK", secret_key="SK")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert result["job_id"] == "abc"
         assert "LOW AK:SK" in seen_headers["auth"]
 
-    async def test_env_var_fallback(self, monkeypatch):
+    def test_env_var_fallback(self, monkeypatch):
         monkeypatch.setenv("IA_ACCESS_KEY", "ENV_AK")
         monkeypatch.setenv("IA_SECRET_KEY", "ENV_SK")
         seen_headers: dict[str, str] = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen_headers["auth"] = request.headers.get("authorization", "")
             return json_response({"url": "http://example.com", "job_id": "xyz"})
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.save_page("http://example.com")
+        payload = _call("save_page", url="http://example.com")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert "LOW ENV_AK:ENV_SK" in seen_headers["auth"]
 
 
 class TestSavePageStatusTool:
-    async def test_returns_status(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_returns_status(self, monkeypatch):
+        def handler(request):
             return json_response({"status": "success", "original_url": "http://example.com"})
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.save_page_status("job123")
+        payload = _call("save_page_status", job_id="job123")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert result["status"] == "success"
 
-    async def test_empty_job_id_returns_error(self, monkeypatch):
+    def test_empty_job_id_returns_error(self, monkeypatch):
         monkeypatch.setattr(server_module, "_client", make_mock_client(lambda r: json_response({})))
-        result = await server_module.save_page_status("")
-        assert isinstance(result, str)
-        assert "Error:" in result
+        payload = _call("save_page_status", job_id="")
+        text = payload["content"][0]["text"]
+        assert "Error:" in text
 
 
 class TestWaybackSnapshotsPaginationTool:
-    async def test_show_resume_key_returns_dict(self, monkeypatch):
+    def test_show_resume_key_returns_dict(self, monkeypatch):
         cdx_with_resume = [
             ["urlkey", "timestamp"],
             ["com,example)/", "20200101"],
@@ -345,50 +385,52 @@ class TestWaybackSnapshotsPaginationTool:
             ["resume_key_abc"],
         ]
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response(cdx_with_resume)
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.wayback_snapshots("example.com", show_resume_key=True)
+        payload = _call("wayback_snapshots", url="example.com", show_resume_key=True)
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert "snapshots" in result
         assert result["resume_key"] == "resume_key_abc"
 
-    async def test_fields_param_accepted(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_fields_param_accepted(self, monkeypatch):
+        def handler(request):
             return json_response([
                 ["timestamp", "statuscode"],
                 ["20200101", "200"],
             ])
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.wayback_snapshots(
-            "example.com", fields=["timestamp", "statuscode"]
-        )
+        payload = _call("wayback_snapshots", url="example.com", fields=["timestamp", "statuscode"])
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, list)
         assert result[0]["timestamp"] == "20200101"
 
 
 class TestSearchArchiveDeepTotalOnlyTool:
-    async def test_total_only_returns_count(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_total_only_returns_count(self, monkeypatch):
+        def handler(request):
             return json_response({"total": 999, "count": 0, "items": []})
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.search_archive_deep("jazz", total_only=True)
+        payload = _call("search_archive_deep", query="jazz", total_only=True)
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, dict)
         assert result["total"] == 999
 
 
 class TestListItemFilesDownloadUrl:
-    async def test_files_have_download_url(self, monkeypatch):
-        def handler(request: httpx.Request) -> httpx.Response:
+    def test_files_have_download_url(self, monkeypatch):
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test-item"},
                 "files": [{"name": "file1.mp3", "format": "VBR MP3"}],
             })
 
         monkeypatch.setattr(server_module, "_client", make_mock_client(handler))
-        result = await server_module.list_item_files("test-item")
+        payload = _call("list_item_files", identifier="test-item")
+        result = json.loads(payload["content"][0]["text"])
         assert isinstance(result, list)
         assert result[0]["download_url"] == "https://archive.org/download/test-item/file1.mp3"
