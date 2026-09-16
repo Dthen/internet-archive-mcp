@@ -661,36 +661,36 @@ CDX_RESPONSE = [
 
 
 class TestWaybackSnapshots:
-    async def test_parses_cdx_header_and_rows(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=CDX_RESPONSE)
+    def test_parses_cdx_header_and_rows(self) -> None:
+        def handler(request):
+            return json_response(CDX_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert len(result) == 1
         assert result[0]["urlkey"] == "com,example)/"
         assert result[0]["timestamp"] == "20020120142510"
         assert result[0]["statuscode"] == "200"
 
-    async def test_domain_match_type_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json=[]))
+    def test_domain_match_type_raises(self) -> None:
+        ac = make_client(lambda r: json_response([]))
         with pytest.raises(ValueError, match="domain"):
-            await ac.wayback_snapshots("example.com", match_type="domain")
+            ac.wayback_snapshots("example.com", match_type="domain")
 
-    async def test_empty_url_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json=[]))
+    def test_empty_url_raises(self) -> None:
+        ac = make_client(lambda r: json_response([]))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.wayback_snapshots("")
+            ac.wayback_snapshots("")
 
-    async def test_filter_and_collapse_params_passed(self) -> None:
+    def test_filter_and_collapse_params_passed(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=CDX_RESPONSE)
+            return json_response(CDX_RESPONSE)
 
         ac = make_client(handler)
-        await ac.wayback_snapshots(
+        ac.wayback_snapshots(
             "example.com",
             filter_expr="statuscode:200",
             collapse="urlkey",
@@ -699,25 +699,25 @@ class TestWaybackSnapshots:
         assert "filter" in url
         assert "collapse" in url
 
-    async def test_empty_response_returns_empty_list(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=[])
+    def test_empty_response_returns_empty_list(self) -> None:
+        def handler(request):
+            return json_response([])
 
         ac = make_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert result == []
 
-    async def test_header_only_response_returns_empty(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=[["urlkey", "timestamp"]])
+    def test_header_only_response_returns_empty(self) -> None:
+        def handler(request):
+            return json_response([["urlkey", "timestamp"]])
 
         ac = make_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert result == []
 
 
 class TestWaybackSnapshotsPagination:
-    async def test_show_resume_key_parses_separator_and_key(self) -> None:
+    def test_show_resume_key_parses_separator_and_key(self) -> None:
         """When showResumeKey=true, CDX appends [] then [resumeKey]."""
         cdx_with_resume = [
             ["urlkey", "timestamp", "original"],
@@ -727,101 +727,101 @@ class TestWaybackSnapshotsPagination:
             ["resume_abc123"],
         ]
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=cdx_with_resume)
+        def handler(request):
+            return json_response(cdx_with_resume)
 
         ac = make_client(handler)
-        result = await ac.wayback_snapshots("example.com", show_resume_key=True)
+        result = ac.wayback_snapshots("example.com", show_resume_key=True)
         assert isinstance(result, dict)
         assert len(result["snapshots"]) == 2
         assert result["resume_key"] == "resume_abc123"
 
-    async def test_show_resume_key_no_more_pages(self) -> None:
+    def test_show_resume_key_no_more_pages(self) -> None:
         """When no separator row, resume_key should be None."""
         cdx_no_resume = [
             ["urlkey", "timestamp"],
             ["com,example)/", "20200101"],
         ]
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=cdx_no_resume)
+        def handler(request):
+            return json_response(cdx_no_resume)
 
         ac = make_client(handler)
-        result = await ac.wayback_snapshots("example.com", show_resume_key=True)
+        result = ac.wayback_snapshots("example.com", show_resume_key=True)
         assert isinstance(result, dict)
         assert len(result["snapshots"]) == 1
         assert result["resume_key"] is None
 
-    async def test_show_resume_key_empty_response(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=[])
+    def test_show_resume_key_empty_response(self) -> None:
+        def handler(request):
+            return json_response([])
 
         ac = make_client(handler)
-        result = await ac.wayback_snapshots("example.com", show_resume_key=True)
+        result = ac.wayback_snapshots("example.com", show_resume_key=True)
         assert result == {"snapshots": [], "resume_key": None}
 
-    async def test_page_param_passed(self) -> None:
+    def test_page_param_passed(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=CDX_RESPONSE)
+            return json_response(CDX_RESPONSE)
 
         ac = make_client(handler)
-        await ac.wayback_snapshots("example.com", page=3)
+        ac.wayback_snapshots("example.com", page=3)
         assert "page=3" in seen["url"]
 
-    async def test_resume_key_param_passed(self) -> None:
+    def test_resume_key_param_passed(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=CDX_RESPONSE)
+            return json_response(CDX_RESPONSE)
 
         ac = make_client(handler)
-        await ac.wayback_snapshots("example.com", resume_key="abc123")
+        ac.wayback_snapshots("example.com", resume_key="abc123")
         assert "resumeKey=abc123" in seen["url"]
 
-    async def test_show_resume_key_param_passed(self) -> None:
+    def test_show_resume_key_param_passed(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=CDX_RESPONSE)
+            return json_response(CDX_RESPONSE)
 
         ac = make_client(handler)
-        await ac.wayback_snapshots("example.com", show_resume_key=True)
+        ac.wayback_snapshots("example.com", show_resume_key=True)
         assert "showResumeKey=true" in seen["url"]
 
-    async def test_newest_param_passed(self) -> None:
+    def test_newest_param_passed(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=CDX_RESPONSE)
+            return json_response(CDX_RESPONSE)
 
         ac = make_client(handler)
-        await ac.wayback_snapshots("example.com", newest=True)
+        ac.wayback_snapshots("example.com", newest=True)
         assert "newest=true" in seen["url"]
 
-    async def test_fast_latest_param_passed(self) -> None:
+    def test_fast_latest_param_passed(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json=CDX_RESPONSE)
+            return json_response(CDX_RESPONSE)
 
         ac = make_client(handler)
-        await ac.wayback_snapshots("example.com", fast_latest=True)
+        ac.wayback_snapshots("example.com", fast_latest=True)
         assert "fastLatest=true" in seen["url"]
 
-    async def test_default_returns_list_not_dict(self) -> None:
+    def test_default_returns_list_not_dict(self) -> None:
         """Backward compat: without show_resume_key, returns plain list."""
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=CDX_RESPONSE)
+        def handler(request):
+            return json_response(CDX_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert isinstance(result, list)
 
 
