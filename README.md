@@ -120,8 +120,8 @@ pytest tests/ -v
 internet-archive-mcp/
 ├── src/internet_archive_mcp/
 │   ├── __init__.py
-│   ├── client.py      # Async httpx client — all API logic
-│   └── server.py      # FastMCP tool definitions (thin wrappers)
+│   ├── client.py      # Synchronous stdlib `urllib` client — all API logic
+│   └── server.py      # Stateless-era stdio server; 13 thin sync handlers
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py
@@ -135,8 +135,12 @@ internet-archive-mcp/
 └── pyproject.toml
 ```
 
-- **`client.py`** — `ArchiveClient` class using async `httpx`. Talks to two base URLs: `https://archive.org` (search, metadata, availability) and `https://web.archive.org` (CDX, content fetch, Save Page Now). Owns caching, rate limiting, and retry logic.
-- **`server.py`** — FastMCP server with 13 `@mcp.tool()` definitions. Each tool is a thin async wrapper that delegates to `ArchiveClient` and converts exceptions to error strings.
+- **`client.py`** — `ArchiveClient` class using stdlib `urllib` with a TTL cache, rate spacing, and a tag-faithful 429/Retry-After ladder. Talks to two base URLs: `https://archive.org` (search, metadata, availability) and `https://web.archive.org` (CDX, content fetch, Save Page Now).
+- **`server.py`** — Stateless-era stdio server; 13 thin sync handlers. Zero runtime dependencies (stdlib only).
+
+## Protocol
+
+Speaks the MCP stateless era `2026-07-28` over stdio newline-delimited JSON-RPC. No `initialize` — answered `-32601`, clients auto-fall back to `server/discover`. `ping` → `{}`. Tool results carry `resultType`/`ttlMs`/`cacheScope`. No `outputSchema` or `structuredContent` by design. Requires a 2026-07-28-capable client (Hermes verified under both `auto` and `stateless`). Pattern: REFERENCE.md §1–§7 of the migration plan.
 
 ## Design decisions
 
