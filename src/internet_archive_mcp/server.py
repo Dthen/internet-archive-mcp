@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Stdlib stateless-era (2026-07-28) MCP server for the Internet Archive."""
 import json, sys
+from pathlib import Path
 
 if hasattr(sys.stdin, "reconfigure"):            # binary/undecodable bytes must not kill the loop
     sys.stdin.reconfigure(errors="replace")      # invalid UTF-8 → U+FFFD → lands in the json.loads except
@@ -35,11 +36,26 @@ def era_result(payload):
 _client = ArchiveClient()
 
 # ---------------------------------------------------------------------------
-# T05 placeholder — tools surface lands in T06–T07
+# Tools surface (T06) — frozen from the golden capture, never hand-copied
 # ---------------------------------------------------------------------------
-# TOOLS = the byte-frozen 13-tool listing (name/description/inputSchema from
-# golden/internet-archive.tools.json, outputSchema + _meta stripped) — T06.
-TOOLS = []
+# D4: golden/internet-archive.tools.json (T00 capture) is the ONLY sanctioned
+# source of the 13 name/description/inputSchema triples; the legacy-framework
+# keys outputSchema and _meta are dropped at projection. Drift is structurally
+# impossible because the golden IS the source — edit the capture, never this
+# projection. Repo-root path via __file__ walk (src/<pkg>/server.py -> parents[2]);
+# the editable install keeps this resolvable from the repo venv (T19 probe gate).
+def _load_tools():
+    path = Path(__file__).resolve().parents[2] / "golden" / "internet-archive.tools.json"
+    if not path.is_file():
+        raise RuntimeError(f"golden tools capture missing: {path} — refuse to serve an empty surface")
+    tools = json.loads(path.read_text())
+    if len(tools) != 13:
+        raise RuntimeError(f"golden tools capture holds {len(tools)} tools, expected 13: {path}")
+    return [{"name": t["name"], "description": t["description"], "inputSchema": t["inputSchema"]}
+            for t in tools]
+
+
+TOOLS = _load_tools()   # D4: frozen surface — edit the capture, never this projection
 
 
 def handle_call(name, arguments):
