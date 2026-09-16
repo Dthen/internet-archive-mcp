@@ -948,70 +948,70 @@ AVAILABILITY_RESPONSE = {
 
 
 class TestWaybackAvailability:
-    async def test_returns_response_dict(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=AVAILABILITY_RESPONSE)
+    def test_returns_response_dict(self) -> None:
+        def handler(request):
+            return json_response(AVAILABILITY_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.wayback_availability("example.com")
+        result = ac.wayback_availability("example.com")
         assert result["url"] == "example.com"
         assert result["archived_snapshots"]["closest"]["available"] is True
 
-    async def test_empty_url_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_empty_url_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.wayback_availability("")
+            ac.wayback_availability("")
 
 
 class TestWaybackFetch:
-    async def test_returns_content(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, text="<html>Hello</html>")
+    def test_returns_content(self) -> None:
+        def handler(request):
+            return text_response("<html>Hello</html>")
 
         ac = make_client(handler)
-        result = await ac.wayback_fetch("example.com", timestamp="20260101")
+        result = ac.wayback_fetch("example.com", timestamp="20260101")
         assert result["content"] == "<html>Hello</html>"
         assert result["truncated"] is False
         assert result["content_length"] == len("<html>Hello</html>")
 
-    async def test_raw_adds_id_suffix(self) -> None:
+    def test_raw_adds_id_suffix(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, text="content")
+            return text_response("content")
 
         ac = make_client(handler)
-        await ac.wayback_fetch("example.com", timestamp="20260101", raw=True)
+        ac.wayback_fetch("example.com", timestamp="20260101", raw=True)
         assert "20260101id_" in seen["url"]
 
-    async def test_no_raw_no_id_suffix(self) -> None:
+    def test_no_raw_no_id_suffix(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, text="content")
+            return text_response("content")
 
         ac = make_client(handler)
-        await ac.wayback_fetch("example.com", timestamp="20260101", raw=False)
+        ac.wayback_fetch("example.com", timestamp="20260101", raw=False)
         assert "id_" not in seen["url"]
 
-    async def test_truncation_works(self) -> None:
+    def test_truncation_works(self) -> None:
         long_content = "x" * 1000
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, text=long_content)
+        def handler(request):
+            return text_response(long_content)
 
         ac = make_client(handler)
-        result = await ac.wayback_fetch("example.com", char_limit=100)
+        result = ac.wayback_fetch("example.com", char_limit=100)
         assert result["truncated"] is True
         assert len(result["content"]) == 100
         assert result["content_length"] == 1000
 
-    async def test_empty_url_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, text=""))
+    def test_empty_url_raises(self) -> None:
+        ac = make_client(lambda r: text_response(""))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.wayback_fetch("")
+            ac.wayback_fetch("")
 
 
 # ---------------------------------------------------------------------------
