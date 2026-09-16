@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 
 from internet_archive_mcp.client import ArchiveClient
-from conftest import make_mock_client, json_response
+from conftest import make_mock_client, json_response, text_response
 
 
 # ---------------------------------------------------------------------------
@@ -17,53 +16,49 @@ from conftest import make_mock_client, json_response
 class TestCDXMalformedResponses:
     """CDX endpoint returning non-list JSON must not crash or produce garbage."""
 
-    async def test_cdx_dict_response_returns_empty(self):
+    def test_cdx_dict_response_returns_empty(self):
         """Finding 1: CDX returning a JSON dict → should return [], not KeyError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({"error": "something went wrong"})
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert result == []
 
-    async def test_cdx_dict_response_show_resume_key(self):
+    def test_cdx_dict_response_show_resume_key(self):
         """Finding 1b: CDX dict with show_resume_key → empty snapshots dict."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({"error": "oops"})
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com", show_resume_key=True)
+        result = ac.wayback_snapshots("example.com", show_resume_key=True)
         assert result == {"snapshots": [], "resume_key": None}
 
-    async def test_cdx_integer_response_returns_empty(self):
+    def test_cdx_integer_response_returns_empty(self):
         """Finding 2: CDX returning an integer → should return [], not TypeError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response(42)
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert result == []
 
-    async def test_cdx_string_response_returns_empty(self):
+    def test_cdx_string_response_returns_empty(self):
         """Finding 3: CDX returning a string → should return [], not garbage dicts."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response("some error message")
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert result == []
 
-    async def test_cdx_null_response_returns_empty(self):
+    def test_cdx_null_response_returns_empty(self):
         """CDX returning null → should return []."""
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                content=b"null",
-                headers={"Content-Type": "application/json"},
-            )
+        def handler(request):
+            return (200, {"Content-Type": "application/json"}, b"null")
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com")
+        result = ac.wayback_snapshots("example.com")
         assert result == []
 
 
@@ -73,32 +68,32 @@ class TestCDXMalformedResponses:
 
 
 class TestSearchArchiveMalformedResponse:
-    async def test_list_response_raises_valueerror(self):
+    def test_list_response_raises_valueerror(self):
         """Finding 4: advancedsearch returning a list → ValueError, not AttributeError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response(["unexpected", "list"])
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.search_archive("test")
+            ac.search_archive("test")
 
-    async def test_string_response_raises_valueerror(self):
+    def test_string_response_raises_valueerror(self):
         """advancedsearch returning a string → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response("error string")
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.search_archive("test")
+            ac.search_archive("test")
 
-    async def test_integer_response_raises_valueerror(self):
+    def test_integer_response_raises_valueerror(self):
         """advancedsearch returning an int → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response(500)
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.search_archive("test")
+            ac.search_archive("test")
 
 
 # ---------------------------------------------------------------------------
@@ -107,23 +102,23 @@ class TestSearchArchiveMalformedResponse:
 
 
 class TestMetadataMalformedResponse:
-    async def test_list_response_raises_valueerror(self):
+    def test_list_response_raises_valueerror(self):
         """Finding 5: metadata returning a list → ValueError, not TypeError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response(["unexpected"])
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.get_item_metadata("test-item")
+            ac.get_item_metadata("test-item")
 
-    async def test_string_response_raises_valueerror(self):
+    def test_string_response_raises_valueerror(self):
         """metadata returning a string → ValueError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response("not a dict")
 
         ac = make_mock_client(handler)
         with pytest.raises(ValueError, match="Unexpected API response format"):
-            await ac.get_item_metadata("test-item")
+            ac.get_item_metadata("test-item")
 
 
 # ---------------------------------------------------------------------------
@@ -132,34 +127,34 @@ class TestMetadataMalformedResponse:
 
 
 class TestWaybackSnapshotsPageValidation:
-    async def test_page_zero_raises(self):
+    def test_page_zero_raises(self):
         """Finding 6: page=0 should raise ValueError."""
         ac = make_mock_client(lambda r: json_response([]))
         with pytest.raises(ValueError, match="page must be >= 1"):
-            await ac.wayback_snapshots("example.com", page=0)
+            ac.wayback_snapshots("example.com", page=0)
 
-    async def test_page_negative_raises(self):
+    def test_page_negative_raises(self):
         """Finding 6: page=-1 should raise ValueError."""
         ac = make_mock_client(lambda r: json_response([]))
         with pytest.raises(ValueError, match="page must be >= 1"):
-            await ac.wayback_snapshots("example.com", page=-1)
+            ac.wayback_snapshots("example.com", page=-1)
 
-    async def test_page_none_ok(self):
+    def test_page_none_ok(self):
         """page=None (default) should not raise."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response([["timestamp"], ["20200101"]])
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com", page=None)
+        result = ac.wayback_snapshots("example.com", page=None)
         assert len(result) == 1
 
-    async def test_page_one_ok(self):
+    def test_page_one_ok(self):
         """page=1 should work fine."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response([["timestamp"], ["20200101"]])
 
         ac = make_mock_client(handler)
-        result = await ac.wayback_snapshots("example.com", page=1)
+        result = ac.wayback_snapshots("example.com", page=1)
         assert len(result) == 1
 
 
@@ -169,16 +164,16 @@ class TestWaybackSnapshotsPageValidation:
 
 
 class TestSortsDeduplication:
-    async def test_duplicate_identifier_deduped(self):
+    def test_duplicate_identifier_deduped(self):
         """Finding 7: duplicate 'identifier' in sorts should be deduped."""
         seen_urls: list[str] = []
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen_urls.append(str(request.url))
             return json_response({"items": [], "total": 0, "count": 0})
 
         ac = make_mock_client(handler)
-        result = await ac.search_archive_deep(
+        result = ac.search_archive_deep(
             "test", sorts=["identifier", "downloads desc", "identifier"]
         )
         url = seen_urls[0]
@@ -186,16 +181,16 @@ class TestSortsDeduplication:
         # The URL-encoded sorts param: identifier,downloads+desc,identifier → deduped
         assert url.count("identifier") == 1 or "identifier%2Cdownloads" in url
 
-    async def test_duplicate_non_identifier_deduped(self):
+    def test_duplicate_non_identifier_deduped(self):
         """Duplicate non-identifier sorts should also be deduped."""
         seen_urls: list[str] = []
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen_urls.append(str(request.url))
             return json_response({"items": [], "total": 0, "count": 0})
 
         ac = make_mock_client(handler)
-        await ac.search_archive_deep(
+        ac.search_archive_deep(
             "test", sorts=["downloads desc", "downloads desc", "identifier"]
         )
         url = seen_urls[0]
@@ -210,11 +205,11 @@ class TestSortsDeduplication:
 
 
 class TestSortCacheKey:
-    async def test_sort_cache_key_uses_truncated_list(self):
+    def test_sort_cache_key_uses_truncated_list(self):
         """Finding 8: sort[:3] for API and cache key should match → no unnecessary misses."""
         call_count = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
             return json_response({
@@ -225,8 +220,8 @@ class TestSortCacheKey:
         sort_4 = ["a asc", "b desc", "c asc", "d desc"]
         sort_3 = ["a asc", "b desc", "c asc"]
 
-        r1 = await ac.search_archive("test", sort=sort_4)
-        r2 = await ac.search_archive("test", sort=sort_3)
+        r1 = ac.search_archive("test", sort=sort_4)
+        r2 = ac.search_archive("test", sort=sort_3)
         # Both should hit the same cache entry since API only gets first 3
         assert call_count == 1
         assert r1 == r2
@@ -238,16 +233,16 @@ class TestSortCacheKey:
 
 
 class TestSavePageStatusEncoding:
-    async def test_job_id_url_encoded(self):
+    def test_job_id_url_encoded(self):
         """Finding 10: job_id with special chars should be URL-encoded."""
         seen_urls: list[str] = []
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen_urls.append(str(request.url))
             return json_response({"status": "success"})
 
         ac = make_mock_client(handler)
-        await ac.save_page_status("job/123 test")
+        ac.save_page_status("job/123 test")
         url = seen_urls[0]
         assert "job/123 test" not in url
         assert "job%2F123%20test" in url
@@ -259,33 +254,33 @@ class TestSavePageStatusEncoding:
 
 
 class TestWaybackFetchCaching:
-    async def test_wayback_fetch_cached(self):
+    def test_wayback_fetch_cached(self):
         """Finding 11: wayback_fetch should cache results."""
         call_count = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, text="archived content here")
+            return text_response("archived content here")
 
         ac = make_mock_client(handler)
-        r1 = await ac.wayback_fetch("http://example.com", timestamp="20200101")
-        r2 = await ac.wayback_fetch("http://example.com", timestamp="20200101")
+        r1 = ac.wayback_fetch("http://example.com", timestamp="20200101")
+        r2 = ac.wayback_fetch("http://example.com", timestamp="20200101")
         assert call_count == 1
         assert r1["content"] == r2["content"]
 
-    async def test_wayback_fetch_different_char_limits_share_cache(self):
+    def test_wayback_fetch_different_char_limits_share_cache(self):
         """Different char_limits should share the same cache entry (truncate on read)."""
         call_count = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, text="A" * 100)
+            return text_response("A" * 100)
 
         ac = make_mock_client(handler)
-        r1 = await ac.wayback_fetch("http://example.com", timestamp="20200101", char_limit=50)
-        r2 = await ac.wayback_fetch("http://example.com", timestamp="20200101", char_limit=80)
+        r1 = ac.wayback_fetch("http://example.com", timestamp="20200101", char_limit=50)
+        r2 = ac.wayback_fetch("http://example.com", timestamp="20200101", char_limit=80)
         assert call_count == 1  # same cache entry
         assert len(r1["content"]) == 50
         assert r1["truncated"] is True
@@ -294,32 +289,32 @@ class TestWaybackFetchCaching:
         assert r1["content_length"] == 100
         assert r2["content_length"] == 100
 
-    async def test_wayback_fetch_different_urls_not_cached(self):
+    def test_wayback_fetch_different_urls_not_cached(self):
         """Different URLs should not share cache."""
         call_count = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, text=f"content {call_count}")
+            return text_response(f"content {call_count}")
 
         ac = make_mock_client(handler)
-        await ac.wayback_fetch("http://example.com/a", timestamp="20200101")
-        await ac.wayback_fetch("http://example.com/b", timestamp="20200101")
+        ac.wayback_fetch("http://example.com/a", timestamp="20200101")
+        ac.wayback_fetch("http://example.com/b", timestamp="20200101")
         assert call_count == 2
 
-    async def test_wayback_fetch_full_content_cached_truncated_on_read(self):
+    def test_wayback_fetch_full_content_cached_truncated_on_read(self):
         """Cache stores full content; char_limit=large gets full content."""
         call_count = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, text="B" * 200)
+            return text_response("B" * 200)
 
         ac = make_mock_client(handler)
-        r1 = await ac.wayback_fetch("http://example.com", timestamp="20200101", char_limit=10)
-        r2 = await ac.wayback_fetch("http://example.com", timestamp="20200101", char_limit=50000)
+        r1 = ac.wayback_fetch("http://example.com", timestamp="20200101", char_limit=10)
+        r2 = ac.wayback_fetch("http://example.com", timestamp="20200101", char_limit=50000)
         assert call_count == 1
         assert len(r1["content"]) == 10
         assert r1["truncated"] is True
@@ -328,7 +323,7 @@ class TestWaybackFetchCaching:
 
 
 # ---------------------------------------------------------------------------
-# Defense in depth: server tool except clauses
+# Defense in depth: server tool except clauses (T15b scope — left unported)
 # ---------------------------------------------------------------------------
 
 
