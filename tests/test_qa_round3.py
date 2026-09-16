@@ -332,75 +332,75 @@ class TestAvailabilitySaveGuards:
 class TestGetItemReviewsDefensive:
     """get_item_reviews must handle non-list truthy reviews values."""
 
-    async def test_reviews_string_returns_empty(self):
+    def test_reviews_string_returns_empty(self):
         """reviews is a truthy string → should return []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "reviews": "not-a-list",
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_item_reviews("test")
+        result = ac.get_item_reviews("test")
         assert result == []
 
-    async def test_reviews_dict_returns_empty(self):
+    def test_reviews_dict_returns_empty(self):
         """reviews is a truthy dict → should return []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "reviews": {"reviewer": "someone"},
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_item_reviews("test")
+        result = ac.get_item_reviews("test")
         assert result == []
 
-    async def test_reviews_int_returns_empty(self):
+    def test_reviews_int_returns_empty(self):
         """reviews is a truthy int → should return []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "reviews": 42,
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_item_reviews("test")
+        result = ac.get_item_reviews("test")
         assert result == []
 
-    async def test_reviews_valid_list_returned(self):
+    def test_reviews_valid_list_returned(self):
         """Valid reviews list should be returned as-is."""
         reviews = [{"reviewer": "bob", "stars": 5}]
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "reviews": reviews,
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_item_reviews("test")
+        result = ac.get_item_reviews("test")
         assert result == reviews
 
-    async def test_reviews_none_returns_empty(self):
+    def test_reviews_none_returns_empty(self):
         """reviews=None → should return []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test"},
                 "reviews": None,
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_item_reviews("test")
+        result = ac.get_item_reviews("test")
         assert result == []
 
-    async def test_reviews_absent_returns_empty(self):
+    def test_reviews_absent_returns_empty(self):
         """No reviews key → should return []."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({"metadata": {"identifier": "test"}})
 
         ac = make_mock_client(handler)
-        result = await ac.get_item_reviews("test")
+        result = ac.get_item_reviews("test")
         assert result == []
 
 
@@ -412,58 +412,58 @@ class TestGetItemReviewsDefensive:
 class TestGetCollectionInfoDefensive:
     """get_collection_info must handle non-dict metadata."""
 
-    async def test_metadata_non_dict_string(self):
+    def test_metadata_non_dict_string(self):
         """metadata is a string → should not crash with AttributeError."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": "just-a-string",
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_collection_info("test")
+        result = ac.get_collection_info("test")
         # Should add _note since mediatype != collection
         assert "_note" in result
 
-    async def test_metadata_non_dict_list(self):
+    def test_metadata_non_dict_list(self):
         """metadata is a list → should not crash."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": ["unexpected"],
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_collection_info("test")
+        result = ac.get_collection_info("test")
         assert "_note" in result
 
-    async def test_metadata_non_dict_int(self):
+    def test_metadata_non_dict_int(self):
         """metadata is an int → should not crash."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": 42,
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_collection_info("test")
+        result = ac.get_collection_info("test")
         assert "_note" in result
 
-    async def test_metadata_absent(self):
+    def test_metadata_absent(self):
         """No metadata key → should not crash."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({"server": "x"})
 
         ac = make_mock_client(handler)
-        result = await ac.get_collection_info("test")
+        result = ac.get_collection_info("test")
         assert "_note" in result
 
-    async def test_metadata_valid_collection_no_note(self):
+    def test_metadata_valid_collection_no_note(self):
         """Valid collection metadata → no _note."""
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             return json_response({
                 "metadata": {"identifier": "test", "mediatype": "collection"},
             })
 
         ac = make_mock_client(handler)
-        result = await ac.get_collection_info("test")
+        result = ac.get_collection_info("test")
         assert "_note" not in result
 
 
