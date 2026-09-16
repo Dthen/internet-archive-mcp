@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import urllib.error
+
 import pytest
 
 from internet_archive_mcp.client import ArchiveClient
+from internet_archive_mcp.server import handle_call
 from conftest import make_mock_client, json_response, text_response
 
 
@@ -323,64 +326,96 @@ class TestWaybackFetchCaching:
 
 
 # ---------------------------------------------------------------------------
-# Defense in depth: server tool except clauses (T15b scope — left unported)
+# Defense in depth: server tool except clauses (T15b — ported from T15a)
 # ---------------------------------------------------------------------------
+# Post-T07 these folds are sync and live in the era server's handler functions.
+# We exercise them via the REAL era dispatch (handle_call) with a BrokenClient
+# swapped into server_module._client — the same attribute the legacy tests
+# patched (legacy was framework-managed coroutines; the era fold is plain sync).
 
 
 class TestServerExceptionHandling:
     """Server tools should catch KeyError, TypeError, AttributeError too."""
 
-    async def test_search_archive_catches_attribute_error(self):
+    def test_search_archive_catches_attribute_error(self, monkeypatch):
         """Server search_archive should return error string on AttributeError."""
-        from internet_archive_mcp.server import search_archive as tool_fn
-        # Monkey-patch the client to raise AttributeError
         import internet_archive_mcp.server as srv
-        original = srv._client
 
         class BrokenClient:
-            async def search_archive(self, *a, **kw):
+            def search_archive(self, *a, **kw):
                 raise AttributeError("mock broken")
 
-        srv._client = BrokenClient()
-        try:
-            result = await tool_fn("test")
-            assert isinstance(result, str)
-            assert "Error:" in result
-        finally:
-            srv._client = original
-
-    async def test_get_item_metadata_catches_type_error(self):
-        """Server get_item_metadata should return error string on TypeError."""
-        from internet_archive_mcp.server import get_item_metadata as tool_fn
-        import internet_archive_mcp.server as srv
         original = srv._client
+        monkeypatch.setattr(srv, "_client", BrokenClient())
+        result = handle_call("search_archive", {"query": "test"})
+        assert isinstance(result, str)
+        assert "Error:" in result
+
+    def test_get_item_metadata_catches_type_error(self, monkeypatch):
+        """Server get_item_metadata should return error string on TypeError."""
+        import internet_archive_mcp.server as srv
 
         class BrokenClient:
-            async def get_item_metadata(self, *a, **kw):
+            def get_item_metadata(self, *a, **kw):
                 raise TypeError("mock broken")
 
-        srv._client = BrokenClient()
-        try:
-            result = await tool_fn("test")
-            assert isinstance(result, str)
-            assert "Error:" in result
-        finally:
-            srv._client = original
-
-    async def test_wayback_snapshots_catches_key_error(self):
-        """Server wayback_snapshots should return error string on KeyError."""
-        from internet_archive_mcp.server import wayback_snapshots as tool_fn
-        import internet_archive_mcp.server as srv
         original = srv._client
+        monkeypatch.setattr(srv, "_client", BrokenClient())
+        result = handle_call("get_item_metadata", {"identifier": "test"})
+        assert isinstance(result, str)
+        assert "Error:" in result
+
+    def test_wayback_snapshots_catches_key_error(self, monkeypatch):
+        """Server wayback_snapshots should return error string on KeyError."""
+        import internet_archive_mcp.server as srv
 
         class BrokenClient:
-            async def wayback_snapshots(self, *a, **kw):
+            def wayback_snapshots(self, *a, **kw):
                 raise KeyError(0)
 
-        srv._client = BrokenClient()
-        try:
-            result = await tool_fn("example.com")
-            assert isinstance(result, str)
-            assert "Error:" in result
-        finally:
-            srv._client = original
+        original = srv._client
+        monkeypatch.setattr(srv, "_client", BrokenClient())
+        result = handle_call("wayback_snapshots", {"url": "example.com"})
+        assert isinstance(result, str)
+        assert "Error:" in result
+
+
+# ---------------------------------------------------------------------------
+# R1 handler-fold pins (T15b — formal home of R1's handler-level pin)
+# ---------------------------------------------------------------------------
+# Seam (T01) and client (T09) already prove TimeoutError → URLError at the
+# transport/client layers. These pins prove the SERVER layer's except clause
+# folds the same errors into the legacy "Error: API request failed —" text —
+# the defensive surface that catches anything escaping the client.
+
+
+def test_urllib_urlerror_folds_to_api_request_failed(monkeypatch):
+    """R1 handler pin (URLError): client raising urllib.error.URLError must reach
+    the handler's transport-error fold → 'Error: API request failed —' prefix,
+    never escape to a -32603."""
+    import internet_archive_mcp.server as srv
+
+    class BrokenClient:
+        def search_archive(self, *a, **kw):
+            raise urllib.error.URLError("boom")
+
+    monkeypatch.setattr(srv, "_client", BrokenClient())
+    result = handle_call("search_archive", {"query": "test"})
+    assert isinstance(result, str)
+    assert result.startswith("Error: API request failed —")
+
+
+def test_read_timeout_folds_to_api_request_failed_at_handler(monkeypatch):
+    """R1 handler pin (TimeoutError): a client raising TimeoutError directly
+    (bypassing the seam — defensive surface) must land in the SAME
+    'Error: API request failed —' fold, never leak as a raw TimeoutError."""
+    import internet_archive_mcp.server as srv
+
+    class BrokenClient:
+        def wayback_fetch(self, *a, **kw):
+            raise TimeoutError("read timed out")
+
+    monkeypatch.setattr(srv, "_client", BrokenClient())
+    result = handle_call("wayback_fetch", {"url": "http://example.com"})
+    assert isinstance(result, str)
+    assert result.startswith("Error: API request failed —")

@@ -84,7 +84,7 @@ def _h_search_archive(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -96,7 +96,7 @@ def _h_get_item_metadata(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -108,7 +108,7 @@ def _h_list_item_files(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -118,7 +118,7 @@ def _h_get_item_reviews(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -142,7 +142,7 @@ def _h_wayback_snapshots(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -152,7 +152,7 @@ def _h_wayback_availability(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -167,7 +167,7 @@ def _h_wayback_fetch(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -180,7 +180,7 @@ def _h_browse_collection(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -190,7 +190,7 @@ def _h_get_collection_info(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -212,7 +212,7 @@ def _h_search_archive_deep(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -226,7 +226,7 @@ def _h_save_page(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
@@ -236,7 +236,7 @@ def _h_save_page_status(a):
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return f"Error: {e}"
     # R1: seam normalizes TimeoutError/HTTPException/reset → URLError so read-timeouts fold exactly like legacy httpx.HTTPError
-    except urllib.error.URLError as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError)
+    except (urllib.error.URLError, TimeoutError) as e:  # ⊃ HTTPError; seam + raise_for_status land 4xx/5xx here too (legacy: httpx.HTTPError). TimeoutError folded here too: defensive — even if a client raises it directly (bypassing the seam), it lands in the same friendly "API request failed" text.
         return f"Error: API request failed — {e}"
 
 
