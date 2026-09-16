@@ -1,0 +1,150 @@
+{
+  "note": {
+    "httpx": "0.28.1",
+    "fastmcp": "3.4.7",
+    "captured": "2026-09-16",
+    "tag_sha": "96a7c6d",
+    "capture": "in-process legacy ArchiveClient over httpx.MockTransport (zero real network, zero spawned subprocesses — F9 bound supplied by the `timeout 30` wrapper)"
+  },
+  "legacy_notes": [
+    "capture method: in-process fastmcp mcp.call_tool -> ToolResult; result.content blocks are wire-identical to the stdio CallToolResult content blocks (verified live against the spawned server, 2026-09-14, _chain.md).",
+    "fastmcp additionally emitted structuredContent {'result': ...} on every sampled call (including the empty content: [] case) — legacy-framework plumbing ONLY. The migrated server emits NONE (D3 trap): has_structured_content is documentation, never an assertion target post-T07.",
+    "R3 fact: empty-list wayback_snapshots -> content: [] (ZERO blocks) — case id 'snapshots_empty', referenced by T07's DEVIATION tag test.",
+    "is_error=False on error-string results is legacy behavior (handlers return 'Error: ...' strings as successful results).",
+    "compact-JSON rule (dict/list results): separators=(',',':'), ensure_ascii=False — asserted byte-equality in this harness; str results pass through VERBATIM, no JSON wrap."
+  ],
+  "cases": [
+    {
+      "id": "snapshots_empty",
+      "tool": "wayback_snapshots",
+      "arguments": {
+        "url": "example.com/nothing"
+      },
+      "content_blocks": [],
+      "is_error": false,
+      "has_structured_content": true
+    },
+    {
+      "id": "snapshots_nonempty_compact_json",
+      "tool": "wayback_snapshots",
+      "arguments": {
+        "url": "example.com/page"
+      },
+      "content_blocks": [
+        {
+          "type": "text",
+          "text": "[{\"urlkey\":\"com,example)/page\",\"timestamp\":\"20200101120000\",\"original\":\"https://example.com/page\",\"mimetype\":\"text/html\",\"statuscode\":\"200\"}]"
+        }
+      ],
+      "is_error": false,
+      "has_structured_content": true
+    },
+    {
+      "id": "search_basic_compact_dict",
+      "tool": "search_archive",
+      "arguments": {
+        "query": "jazz piano"
+      },
+      "content_blocks": [
+        {
+          "type": "text",
+          "text": "{\"numFound\":3,\"start\":0,\"docs\":[{\"identifier\":\"d1\",\"title\":\"T\"}],\"total_pages\":1}"
+        }
+      ],
+      "is_error": false,
+      "has_structured_content": true
+    },
+    {
+      "id": "search_warning_numfound_cap",
+      "tool": "search_archive",
+      "arguments": {
+        "query": "einstein"
+      },
+      "content_blocks": [
+        {
+          "type": "text",
+          "text": "{\"numFound\":12345,\"start\":0,\"docs\":[{\"identifier\":\"d1\",\"title\":\"T\"}],\"total_pages\":618,\"_warning\":\"Sorted results are capped at 10,000 by the API. Use search_archive_deep for deeper paging.\"}"
+        }
+      ],
+      "is_error": false,
+      "has_structured_content": true
+    },
+    {
+      "id": "search_nonascii_raw_utf8",
+      "tool": "search_archive",
+      "arguments": {
+        "query": "museum"
+      },
+      "content_blocks": [
+        {
+          "type": "text",
+          "text": "{\"numFound\":3,\"start\":0,\"docs\":[{\"identifier\":\"m1\",\"naam\":\"Museum für Kunst\"}],\"total_pages\":1}"
+        }
+      ],
+      "is_error": false,
+      "has_structured_content": true
+    },
+    {
+      "id": "thumbnail_verbatim_str",
+      "tool": "get_item_thumbnail",
+      "arguments": {
+        "identifier": "greatest_gen"
+      },
+      "content_blocks": [
+        {
+          "type": "text",
+          "text": "https://archive.org/services/img/greatest_gen"
+        }
+      ],
+      "is_error": false,
+      "has_structured_content": true
+    },
+    {
+      "id": "metadata_notfound_error_str",
+      "tool": "get_item_metadata",
+      "arguments": {
+        "identifier": "greatest_gen"
+      },
+      "content_blocks": [
+        {
+          "type": "text",
+          "text": "Error: Item not found: greatest_gen"
+        }
+      ],
+      "is_error": false,
+      "has_structured_content": true
+    },
+    {
+      "id": "save_page_missing_creds_auth_guidance",
+      "tool": "save_page",
+      "arguments": {
+        "url": "https://example.com"
+      },
+      "content_blocks": [
+        {
+          "type": "text",
+          "text": "Error: Save Page Now requires authentication. Provide access_key and secret_key from https://archive.org/account/s3.php"
+        }
+      ],
+      "is_error": false,
+      "has_structured_content": true
+    },
+    {
+      "id": "save_page_fake_creds_post",
+      "tool": "save_page",
+      "arguments": {
+        "url": "https://example.com/page",
+        "access_key": "AK",
+        "secret_key": "SK"
+      },
+      "content_blocks": [
+        {
+          "type": "text",
+          "text": "{\"url\":\"https://example.com/page\",\"job_id\":\"AK20200101T000000X\",\"status\":\"scheduled\"}"
+        }
+      ],
+      "is_error": false,
+      "has_structured_content": true
+    }
+  ]
+}

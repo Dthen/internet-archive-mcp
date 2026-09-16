@@ -1,0 +1,666 @@
+{
+  "note": {
+    "httpx": "0.28.1",
+    "fastmcp": "3.4.7",
+    "captured": "2026-09-16",
+    "tag_sha": "96a7c6d",
+    "capture": "in-process legacy ArchiveClient over httpx.MockTransport (zero real network, zero spawned subprocesses — F9 bound supplied by the `timeout 30` wrapper)"
+  },
+  "cases": [
+    {
+      "id": "search_default",
+      "method": "GET",
+      "path": "/advancedsearch.php",
+      "raw_query": "q=jazz+piano&output=json&rows=20&page=1&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=mediatype&fl%5B%5D=creator&fl%5B%5D=downloads&fl%5B%5D=publicdate&fl%5B%5D=year",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/advancedsearch.php",
+      "params": [
+        [
+          "q",
+          "jazz piano"
+        ],
+        [
+          "output",
+          "json"
+        ],
+        [
+          "rows",
+          "20"
+        ],
+        [
+          "page",
+          "1"
+        ],
+        [
+          "fl[]",
+          "identifier"
+        ],
+        [
+          "fl[]",
+          "title"
+        ],
+        [
+          "fl[]",
+          "mediatype"
+        ],
+        [
+          "fl[]",
+          "creator"
+        ],
+        [
+          "fl[]",
+          "downloads"
+        ],
+        [
+          "fl[]",
+          "publicdate"
+        ],
+        [
+          "fl[]",
+          "year"
+        ]
+      ]
+    },
+    {
+      "id": "search_fields_and_3sorts_cap",
+      "method": "GET",
+      "path": "/advancedsearch.php",
+      "raw_query": "q=creator%3Aellis+AND+title%3A%27jazz+piano%27%21&output=json&rows=20&page=1&fl%5B%5D=identifier&fl%5B%5D=title&sort%5B%5D=downloads+desc&sort%5B%5D=year+asc&sort%5B%5D=title",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/advancedsearch.php",
+      "params": [
+        [
+          "q",
+          "creator:ellis AND title:'jazz piano'!"
+        ],
+        [
+          "output",
+          "json"
+        ],
+        [
+          "rows",
+          "20"
+        ],
+        [
+          "page",
+          "1"
+        ],
+        [
+          "fl[]",
+          "identifier"
+        ],
+        [
+          "fl[]",
+          "title"
+        ],
+        [
+          "sort[]",
+          "downloads desc"
+        ],
+        [
+          "sort[]",
+          "year asc"
+        ],
+        [
+          "sort[]",
+          "title"
+        ]
+      ]
+    },
+    {
+      "id": "search_mediatype_collection_prefixes",
+      "method": "GET",
+      "path": "/advancedsearch.php",
+      "raw_query": "q=mediatype%3A%28texts%29+AND+collection%3A%28gutenbergetexts%29+AND+einstein&output=json&rows=20&page=1&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=mediatype&fl%5B%5D=creator&fl%5B%5D=downloads&fl%5B%5D=publicdate&fl%5B%5D=year",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/advancedsearch.php",
+      "params": [
+        [
+          "q",
+          "mediatype:(texts) AND collection:(gutenbergetexts) AND einstein"
+        ],
+        [
+          "output",
+          "json"
+        ],
+        [
+          "rows",
+          "20"
+        ],
+        [
+          "page",
+          "1"
+        ],
+        [
+          "fl[]",
+          "identifier"
+        ],
+        [
+          "fl[]",
+          "title"
+        ],
+        [
+          "fl[]",
+          "mediatype"
+        ],
+        [
+          "fl[]",
+          "creator"
+        ],
+        [
+          "fl[]",
+          "downloads"
+        ],
+        [
+          "fl[]",
+          "publicdate"
+        ],
+        [
+          "fl[]",
+          "year"
+        ]
+      ]
+    },
+    {
+      "id": "deep_fields_join_sorts_dedupe_identifier_last",
+      "method": "GET",
+      "path": "/services/search/v1/scrape",
+      "raw_query": "q=mediaType%3Aetree&count=100&fields=identifier%2Ctitle&sorts=downloads+desc%2Cyear+asc%2Cidentifier",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/services/search/v1/scrape",
+      "params": [
+        [
+          "q",
+          "mediaType:etree"
+        ],
+        [
+          "count",
+          "100"
+        ],
+        [
+          "fields",
+          "identifier,title"
+        ],
+        [
+          "sorts",
+          "downloads desc,year asc,identifier"
+        ]
+      ]
+    },
+    {
+      "id": "deep_cursor",
+      "method": "GET",
+      "path": "/services/search/v1/scrape",
+      "raw_query": "q=tag%3Asoundtrack&count=100&cursor=bG9uZzpjdXJzb3I%3D",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/services/search/v1/scrape",
+      "params": [
+        [
+          "q",
+          "tag:soundtrack"
+        ],
+        [
+          "count",
+          "100"
+        ],
+        [
+          "cursor",
+          "bG9uZzpjdXJzb3I="
+        ]
+      ]
+    },
+    {
+      "id": "deep_total_only",
+      "method": "GET",
+      "path": "/services/search/v1/scrape",
+      "raw_query": "q=format%3Apdf&count=100&total_only=true",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/services/search/v1/scrape",
+      "params": [
+        [
+          "q",
+          "format:pdf"
+        ],
+        [
+          "count",
+          "100"
+        ],
+        [
+          "total_only",
+          "true"
+        ]
+      ]
+    },
+    {
+      "id": "metadata_plain",
+      "method": "GET",
+      "path": "/metadata/greatest_gen",
+      "raw_query": "",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/metadata/greatest_gen",
+      "params": []
+    },
+    {
+      "id": "metadata_needsquote_identifier",
+      "method": "GET",
+      "path": "/metadata/a%20b%2Fc%3Ad%21e%27f",
+      "raw_query": "",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/metadata/a%20b%2Fc%3Ad%21e%27f",
+      "params": []
+    },
+    {
+      "id": "list_item_files_format_filter",
+      "method": "GET",
+      "path": "/metadata/greatest_gen",
+      "raw_query": "",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/metadata/greatest_gen",
+      "params": []
+    },
+    {
+      "id": "snapshots_minimal",
+      "method": "GET",
+      "path": "/cdx/search/cdx",
+      "raw_query": "url=example.com%2Fpage&output=json&matchType=exact&limit=25",
+      "headers": {
+        "host": "web.archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://web.archive.org/cdx/search/cdx",
+      "params": [
+        [
+          "url",
+          "example.com/page"
+        ],
+        [
+          "output",
+          "json"
+        ],
+        [
+          "matchType",
+          "exact"
+        ],
+        [
+          "limit",
+          "25"
+        ]
+      ]
+    },
+    {
+      "id": "snapshots_all_optionals",
+      "method": "GET",
+      "path": "/cdx/search/cdx",
+      "raw_query": "url=example.com%2Fpage&output=json&matchType=prefix&limit=10&from=2019&to=2021&filter=statuscode%3A200&filter=mimetype%3Atext%2Fhtml&collapse=urlkey&fl=timestamp%2Coriginal&page=2&showResumeKey=true&resumeKey=rk%2B1&newest=true&fastLatest=true",
+      "headers": {
+        "host": "web.archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://web.archive.org/cdx/search/cdx",
+      "params": [
+        [
+          "url",
+          "example.com/page"
+        ],
+        [
+          "output",
+          "json"
+        ],
+        [
+          "matchType",
+          "prefix"
+        ],
+        [
+          "limit",
+          "10"
+        ],
+        [
+          "from",
+          "2019"
+        ],
+        [
+          "to",
+          "2021"
+        ],
+        [
+          "filter",
+          "statuscode:200"
+        ],
+        [
+          "filter",
+          "mimetype:text/html"
+        ],
+        [
+          "collapse",
+          "urlkey"
+        ],
+        [
+          "fl",
+          "timestamp,original"
+        ],
+        [
+          "page",
+          "2"
+        ],
+        [
+          "showResumeKey",
+          "true"
+        ],
+        [
+          "resumeKey",
+          "rk+1"
+        ],
+        [
+          "newest",
+          "true"
+        ],
+        [
+          "fastLatest",
+          "true"
+        ]
+      ]
+    },
+    {
+      "id": "snapshots_filter_str",
+      "method": "GET",
+      "path": "/cdx/search/cdx",
+      "raw_query": "url=example.com&output=json&matchType=exact&limit=1&filter=statuscode%3A200",
+      "headers": {
+        "host": "web.archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://web.archive.org/cdx/search/cdx",
+      "params": [
+        [
+          "url",
+          "example.com"
+        ],
+        [
+          "output",
+          "json"
+        ],
+        [
+          "matchType",
+          "exact"
+        ],
+        [
+          "limit",
+          "1"
+        ],
+        [
+          "filter",
+          "statuscode:200"
+        ]
+      ]
+    },
+    {
+      "id": "availability",
+      "method": "GET",
+      "path": "/wayback/available",
+      "raw_query": "url=https%3A%2F%2Fexample.com%2Fx%3Fa%3D1%26b%3D2",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/wayback/available",
+      "params": [
+        [
+          "url",
+          "https://example.com/x?a=1&b=2"
+        ]
+      ]
+    },
+    {
+      "id": "fetch_raw_with_timestamp",
+      "method": "GET",
+      "path": "/web/20200101120000id_/https://example.com/page",
+      "raw_query": "",
+      "headers": {
+        "host": "web.archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://web.archive.org/web/20200101120000id_/https://example.com/page",
+      "params": []
+    },
+    {
+      "id": "fetch_raw_no_timestamp_id_only",
+      "method": "GET",
+      "path": "/web/id_/https://example.com/page",
+      "raw_query": "",
+      "headers": {
+        "host": "web.archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://web.archive.org/web/id_/https://example.com/page",
+      "params": []
+    },
+    {
+      "id": "fetch_nonraw_with_timestamp",
+      "method": "GET",
+      "path": "/web/20200101120000/https://example.com/page",
+      "raw_query": "",
+      "headers": {
+        "host": "web.archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://web.archive.org/web/20200101120000/https://example.com/page",
+      "params": []
+    },
+    {
+      "id": "fetch_nonraw_no_timestamp_plain_web_shape",
+      "method": "GET",
+      "path": "/web/https://example.com/page",
+      "raw_query": "",
+      "headers": {
+        "host": "web.archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://web.archive.org/web/https://example.com/page",
+      "params": []
+    },
+    {
+      "id": "save_page_post_fake_creds",
+      "method": "POST",
+      "path": "/save/https://example.com/page",
+      "raw_query": "",
+      "headers": {
+        "host": "web.archive.org",
+        "content-length": "0",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)",
+        "authorization": "LOW AK:SK",
+        "accept": "application/json"
+      },
+      "url": "https://web.archive.org/save/https://example.com/page",
+      "params": []
+    },
+    {
+      "id": "save_status_quoted_job_id",
+      "method": "GET",
+      "path": "/save/status/spn1%3A20200101T000000Z%3Aexample.com",
+      "raw_query": "",
+      "headers": {
+        "host": "web.archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://web.archive.org/save/status/spn1%3A20200101T000000Z%3Aexample.com",
+      "params": []
+    },
+    {
+      "id": "browse_collection_sort_default",
+      "method": "GET",
+      "path": "/advancedsearch.php",
+      "raw_query": "q=collection%3A%28librivoxaudio%29&output=json&rows=5&page=2&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=mediatype&fl%5B%5D=creator&fl%5B%5D=downloads&fl%5B%5D=publicdate&fl%5B%5D=year&sort%5B%5D=downloads+desc",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/advancedsearch.php",
+      "params": [
+        [
+          "q",
+          "collection:(librivoxaudio)"
+        ],
+        [
+          "output",
+          "json"
+        ],
+        [
+          "rows",
+          "5"
+        ],
+        [
+          "page",
+          "2"
+        ],
+        [
+          "fl[]",
+          "identifier"
+        ],
+        [
+          "fl[]",
+          "title"
+        ],
+        [
+          "fl[]",
+          "mediatype"
+        ],
+        [
+          "fl[]",
+          "creator"
+        ],
+        [
+          "fl[]",
+          "downloads"
+        ],
+        [
+          "fl[]",
+          "publicdate"
+        ],
+        [
+          "fl[]",
+          "year"
+        ],
+        [
+          "sort[]",
+          "downloads desc"
+        ]
+      ]
+    },
+    {
+      "id": "get_item_reviews",
+      "method": "GET",
+      "path": "/metadata/greatest_gen",
+      "raw_query": "",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/metadata/greatest_gen",
+      "params": []
+    },
+    {
+      "id": "get_collection_info",
+      "method": "GET",
+      "path": "/metadata/gutenberg",
+      "raw_query": "",
+      "headers": {
+        "host": "archive.org",
+        "accept": "*/*",
+        "accept-encoding": "gzip, deflate",
+        "connection": "keep-alive",
+        "user-agent": "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
+      },
+      "url": "https://archive.org/metadata/gutenberg",
+      "params": []
+    }
+  ]
+}
