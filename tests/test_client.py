@@ -465,63 +465,63 @@ METADATA_RESPONSE = {
 
 
 class TestGetItemMetadata:
-    async def test_returns_parsed_dict(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=METADATA_RESPONSE)
+    def test_returns_parsed_dict(self) -> None:
+        def handler(request):
+            return json_response(METADATA_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.get_item_metadata("test", include_files=True)
+        result = ac.get_item_metadata("test", include_files=True)
         assert result["metadata"]["identifier"] == "test"
         assert len(result["files"]) == 1
 
-    async def test_empty_dict_raises_not_found(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={})
+    def test_empty_dict_raises_not_found(self) -> None:
+        def handler(request):
+            return json_response({})
 
         ac = make_client(handler)
         with pytest.raises(ValueError, match="Item not found: nonexistent"):
-            await ac.get_item_metadata("nonexistent")
+            ac.get_item_metadata("nonexistent")
 
-    async def test_include_files_false_strips_files(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=METADATA_RESPONSE)
+    def test_include_files_false_strips_files(self) -> None:
+        def handler(request):
+            return json_response(METADATA_RESPONSE)
 
         ac = make_client(handler)
-        result = await ac.get_item_metadata("test", include_files=False)
+        result = ac.get_item_metadata("test", include_files=False)
         assert "files" not in result
         assert "files_count" not in result
         assert "metadata" in result
 
-    async def test_empty_identifier_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_empty_identifier_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.get_item_metadata("")
+            ac.get_item_metadata("")
 
-    async def test_caching(self) -> None:
+    def test_caching(self) -> None:
         call_count = 0
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             nonlocal call_count
             call_count += 1
-            return httpx.Response(200, json=METADATA_RESPONSE)
+            return json_response(METADATA_RESPONSE)
 
         ac = make_client(handler)
-        await ac.get_item_metadata("test")
-        await ac.get_item_metadata("test")
+        ac.get_item_metadata("test")
+        ac.get_item_metadata("test")
         assert call_count == 1
 
 
 class TestListItemFiles:
-    async def test_returns_file_list(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=METADATA_RESPONSE)
+    def test_returns_file_list(self) -> None:
+        def handler(request):
+            return json_response(METADATA_RESPONSE)
 
         ac = make_client(handler)
-        files = await ac.list_item_files("test")
+        files = ac.list_item_files("test")
         assert len(files) == 1
         assert files[0]["name"] == "test.pdf"
 
-    async def test_format_filter_case_insensitive(self) -> None:
+    def test_format_filter_case_insensitive(self) -> None:
         resp = {
             "metadata": {"identifier": "test"},
             "files": [
@@ -532,56 +532,56 @@ class TestListItemFiles:
             "files_count": 3,
         }
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=resp)
+        def handler(request):
+            return json_response(resp)
 
         ac = make_client(handler)
-        files = await ac.list_item_files("test", format_filter="pdf")
+        files = ac.list_item_files("test", format_filter="pdf")
         assert len(files) == 2
         assert all(f["format"].lower() == "pdf" for f in files)
 
-    async def test_not_found_propagates(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={})
+    def test_not_found_propagates(self) -> None:
+        def handler(request):
+            return json_response({})
 
         ac = make_client(handler)
         with pytest.raises(ValueError, match="Item not found"):
-            await ac.list_item_files("nonexistent")
+            ac.list_item_files("nonexistent")
 
 
 class TestGetItemReviews:
-    async def test_returns_reviews_list(self) -> None:
+    def test_returns_reviews_list(self) -> None:
         resp = {
             "metadata": {"identifier": "test"},
             "reviews": [{"reviewer": "bob", "stars": 5}],
         }
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=resp)
+        def handler(request):
+            return json_response(resp)
 
         ac = make_client(handler)
-        reviews = await ac.get_item_reviews("test")
+        reviews = ac.get_item_reviews("test")
         assert len(reviews) == 1
         assert reviews[0]["reviewer"] == "bob"
 
-    async def test_absent_reviews_key_returns_empty(self) -> None:
+    def test_absent_reviews_key_returns_empty(self) -> None:
         resp = {"metadata": {"identifier": "test"}}
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=resp)
+        def handler(request):
+            return json_response(resp)
 
         ac = make_client(handler)
-        reviews = await ac.get_item_reviews("test")
+        reviews = ac.get_item_reviews("test")
         assert reviews == []
 
-    async def test_null_reviews_returns_empty(self) -> None:
+    def test_null_reviews_returns_empty(self) -> None:
         resp = {"metadata": {"identifier": "test"}, "reviews": None}
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=resp)
+        def handler(request):
+            return json_response(resp)
 
         ac = make_client(handler)
-        reviews = await ac.get_item_reviews("test")
+        reviews = ac.get_item_reviews("test")
         assert reviews == []
 
 
@@ -622,29 +622,29 @@ class TestBrowseCollection:
 
 
 class TestGetCollectionInfo:
-    async def test_returns_metadata_for_collection(self) -> None:
+    def test_returns_metadata_for_collection(self) -> None:
         resp = {
             "metadata": {"identifier": "opensource", "mediatype": "collection"},
         }
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=resp)
+        def handler(request):
+            return json_response(resp)
 
         ac = make_client(handler)
-        result = await ac.get_collection_info("opensource")
+        result = ac.get_collection_info("opensource")
         assert result["metadata"]["mediatype"] == "collection"
         assert "_note" not in result
 
-    async def test_non_collection_gets_note(self) -> None:
+    def test_non_collection_gets_note(self) -> None:
         resp = {
             "metadata": {"identifier": "test", "mediatype": "texts"},
         }
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=resp)
+        def handler(request):
+            return json_response(resp)
 
         ac = make_client(handler)
-        result = await ac.get_collection_info("test")
+        result = ac.get_collection_info("test")
         assert "_note" in result
         assert "texts" in result["_note"]
 
@@ -854,15 +854,15 @@ class TestSavePageStatus:
 
 
 class TestDownloadUrl:
-    async def test_files_include_download_url(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=METADATA_RESPONSE)
+    def test_files_include_download_url(self) -> None:
+        def handler(request):
+            return json_response(METADATA_RESPONSE)
 
         ac = make_client(handler)
-        files = await ac.list_item_files("test")
+        files = ac.list_item_files("test")
         assert files[0]["download_url"] == "https://archive.org/download/test/test.pdf"
 
-    async def test_download_url_with_format_filter(self) -> None:
+    def test_download_url_with_format_filter(self) -> None:
         resp = {
             "metadata": {"identifier": "myitem"},
             "files": [
@@ -872,11 +872,11 @@ class TestDownloadUrl:
             "files_count": 2,
         }
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=resp)
+        def handler(request):
+            return json_response(resp)
 
         ac = make_client(handler)
-        files = await ac.list_item_files("myitem", format_filter="VBR MP3")
+        files = ac.list_item_files("myitem", format_filter="VBR MP3")
         assert len(files) == 1
         assert files[0]["download_url"] == "https://archive.org/download/myitem/a.mp3"
 
