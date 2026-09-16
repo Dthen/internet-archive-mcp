@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 import urllib.error
 
-import httpx
 import pytest
 
 from internet_archive_mcp.client import (
@@ -15,7 +14,7 @@ from internet_archive_mcp.client import (
 )
 
 import internet_archive_mcp.transport as transport
-from conftest import json_response, make_mock_client, text_response
+from conftest import FakeTransport, json_response, make_mock_client, text_response
 
 
 # ---------------------------------------------------------------------------
@@ -826,31 +825,31 @@ class TestWaybackSnapshotsPagination:
 
 
 class TestSavePageStatus:
-    async def test_returns_status_dict(self) -> None:
+    def test_returns_status_dict(self) -> None:
         status_resp = {"status": "success", "original_url": "http://example.com"}
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=status_resp)
+        def handler(request):
+            return json_response(status_resp)
 
         ac = make_client(handler)
-        result = await ac.save_page_status("job123")
+        result = ac.save_page_status("job123")
         assert result["status"] == "success"
 
-    async def test_correct_url(self) -> None:
+    def test_correct_url(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["url"] = str(request.url)
-            return httpx.Response(200, json={"status": "pending"})
+            return json_response({"status": "pending"})
 
         ac = make_client(handler)
-        await ac.save_page_status("job456")
+        ac.save_page_status("job456")
         assert "/save/status/job456" in seen["url"]
 
-    async def test_empty_job_id_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_empty_job_id_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.save_page_status("")
+            ac.save_page_status("")
 
 
 class TestDownloadUrl:
@@ -1021,38 +1020,43 @@ class TestWaybackFetch:
 
 class TestGetItemThumbnailUrl:
     def test_returns_correct_url(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200))
+        ac = make_client(lambda r: json_response({}))
+        fake = transport._urlopen  # the FakeTransport installed by make_client
         url = ac.get_item_thumbnail_url("test_item")
         assert url == "https://archive.org/services/img/test_item"
+        assert isinstance(fake, FakeTransport) and fake.requests == []  # sync build: zero _urlopen calls
 
     def test_empty_identifier_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200))
+        ac = make_client(lambda r: json_response({}))
+        fake = transport._urlopen  # the FakeTransport installed by make_client
         with pytest.raises(ValueError, match="must not be empty"):
             ac.get_item_thumbnail_url("")
+        assert isinstance(fake, FakeTransport) and fake.requests == []  # guard is sync too
 
 
 class TestSavePage:
-    async def test_missing_keys_raises_with_guidance(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_missing_keys_raises_with_guidance(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="s3.php"):
-            await ac.save_page("https://example.com")
+            ac.save_page("https://example.com")
 
-    async def test_missing_secret_key_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_missing_secret_key_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="s3.php"):
-            await ac.save_page("https://example.com", access_key="AK")
+            ac.save_page("https://example.com", access_key="AK")
 
-    async def test_with_keys_sends_correct_auth_header(self) -> None:
+    def test_with_keys_sends_correct_auth_header(self) -> None:
         seen: dict = {}
 
-        def handler(request: httpx.Request) -> httpx.Response:
+        def handler(request):
             seen["auth"] = request.headers.get("authorization", "")
             seen["accept"] = request.headers.get("accept", "")
             seen["method"] = request.method
-            return httpx.Response(200, json={"url": "example.com", "job_id": "123"})
+            seen["url"] = str(request.url)
+            return json_response({"url": "example.com", "job_id": "123"})
 
         ac = make_client(handler)
-        result = await ac.save_page(
+        result = ac.save_page(
             "https://example.com",
             access_key="AK",
             secret_key="SK",
@@ -1061,8 +1065,10 @@ class TestSavePage:
         assert seen["accept"] == "application/json"
         assert seen["method"] == "POST"
         assert result["job_id"] == "123"
+        # Legacy leaves the target URL UNQUOTED in the SPN2 path (tag client.py l.656).
+        assert seen["url"] == "https://web.archive.org/save/https://example.com"
 
-    async def test_empty_url_raises(self) -> None:
-        ac = make_client(lambda r: httpx.Response(200, json={}))
+    def test_empty_url_raises(self) -> None:
+        ac = make_client(lambda r: json_response({}))
         with pytest.raises(ValueError, match="must not be empty"):
-            await ac.save_page("", access_key="AK", secret_key="SK")
+            ac.save_page("", access_key="AK", secret_key="SK")
