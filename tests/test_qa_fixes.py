@@ -349,4 +349,4 @@ class TestWaybackCaching:
 class TestVersion:
     def test_version_defined(self):
         import internet_archive_mcp
-        assert internet_archive_mcp.__version__ == "0.1.0"
+        assert internet_archive_mcp.__version__ == "0.3.0"

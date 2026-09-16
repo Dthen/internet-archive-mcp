@@ -29,12 +29,12 @@ from pathlib import Path
 # Module constants (single grep-visible flip point per card T04)
 # ---------------------------------------------------------------------------
 SERVER = "internet_archive_mcp.server"
-# $PYO — current production interpreter (3.11 + fastmcp 3.4.7 + httpx). The package runs
-# here pre-rewrite AND post-rewrite (stdlib-only imports still resolve through this venv's
-# editable install); flipped to $PY2 (mcp-venvs/internet-archive-mcp-v2) in a single-line
-# edit at T19. NEVER sys.executable: $PYH only imports this package by accident of its
-# editable-install soup (_chain.md "Era suite contents").
-PROD_PY = "/mnt/HC_Volume_105667182/kimbo/mcp-venvs/internet-archive-mcp/bin/python3"
+# $PY2 — TARGET production interpreter (3.11.15, zero runtime deps, editable install).
+# Flipped from $PYO at T19: the v2 venv is what D.1 will spawn. The client UA literal
+# stays "internet-archive-mcp/0.1.0" (wire identity — _chain.md version-scheme row:
+# T19 changes PACKAGE versions only). NEVER sys.executable: $PYH only imports this
+# package by accident of its editable-install soup (_chain.md "Era suite contents").
+PROD_PY = "/mnt/HC_Volume_105667182/kimbo/mcp-venvs/internet-archive-mcp-v2/bin/python3"
 
 ERA_VERSION = "2026-07-28"  # REFERENCE §1 pinned era constant
 
