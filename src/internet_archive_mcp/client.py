@@ -1,47 +1,84 @@
-"""Async HTTP client for Internet Archive APIs with caching and rate limiting."""
+"""Sync HTTP client for Internet Archive APIs with caching and rate limiting.
+
+T03 port of the legacy transport client (tag pre-migration/20260914,
+``git show pre-migration/20260914:src/internet_archive_mcp/client.py``,
+679 lines -- line cites below are to THAT file). Transport internals now go
+through :mod:`.transport` (raw urllib seam, T01); the ONLY behavioral diffs
+from the tag are coroutine->plain calls and the ``_request`` internals.
+Every endpoint method body (URL builds, param lists, cache key strings,
+quote() calls, fav-trim, _warning/_note branches, CDX resume-key parsing,
+2 MB cache cap, truncation-on-read) is copied verbatim from the tag.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import copy
+import email.message
 import math
 import time
+import urllib.error
 from typing import Any
 from urllib.parse import quote
 
-import httpx
+from . import transport
+from .transport import fetch_raw
 
 # Base URLs for the different API families.
+# Byte-stable at tag values (tag client.py l.15-16).
 IA_BASE = "https://archive.org"
 WAYBACK_BASE = "https://web.archive.org"
 
 # Cache TTL presets (seconds).
+# Byte-stable at tag values (tag client.py l.19-21).
 TTL_MINUTE = 60
 TTL_HOUR = 3600
-TTL_DAY = 24 * 3600
+TTL_DAY = 24 * 3600  # unused, public surface via import
 
 # Maximum cache entries before eviction.
+# Byte-stable at tag value (tag client.py l.24).
 MAX_CACHE_SIZE = 256
 
 # Default User-Agent (IA requires a descriptive one on all automated requests).
+# Byte-stable at tag value (tag client.py l.27-29) -- 0.1.0 wire identity;
+# version coherence at T19 does NOT touch this literal.
 DEFAULT_USER_AGENT = (
     "internet-archive-mcp/0.1.0 (https://github.com/dthen/internet-archive-mcp)"
 )
 
 # Rate limiting defaults.
+# Byte-stable at tag values (tag client.py l.32-34).
 DEFAULT_MIN_INTERVAL = 0.5  # seconds between requests
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_BACKOFF_BASE = 1.0  # seconds
 
+# Module-level sleep seam. Legacy used ``asyncio.sleep`` (tag l.112, l.150);
+# the sync port uses ``time.sleep`` behind this name so tests can patch
+# ``client._sleep`` to observe/zero the ladder's backoff without real wall
+# time. Documented for the T09-T13 test port: the legacy rate/backoff tests
+# (test_client.py l.144-155, l.200-222) monkeypatched NOTHING and measured
+# elapsed time -- the ported tests keep measurable behavior by running with
+# backoff_base=0.01-scale intervals exactly like the legacy versions.
+_sleep = time.sleep
+
 
 class ArchiveClient:
-    """Async client for Internet Archive APIs.
+    """Sync client for Internet Archive APIs.
 
-    Features:
-    - Mandatory descriptive User-Agent on every request (IA policy).
+    Features (all carried from tag client.py l.38-45):
+    - Mandatory descriptive User-Agent on every request (IA policy) -- sent
+      per-request by the seam (transport.fetch_raw; legacy set it as an
+      AsyncClient header default, tag l.56).
     - Bounded in-memory TTL cache (deep-copied on read).
     - Simple rate limiter (minimum interval between requests).
     - Automatic retry with exponential backoff on 429 / Retry-After.
+
+    Port notes vs tag l.47-75: the ``client=`` injection kwarg is DROPPED
+    (the persistent-client seam is gone; tests inject via
+    ``transport._urlopen`` monkeypatch, not a client object), and
+    ``_owns_client`` / ``aclose`` / ``__aenter__`` / ``__aexit__`` are
+    DELETED -- urlopen is per-request, there is no persistent connection to
+    close (the lifespan-rationale ground fact for T05; the 3
+    context-manager tests retire with a ledger line at T09).
     """
 
     def __init__(
@@ -50,34 +87,23 @@ class ArchiveClient:
         min_request_interval: float = DEFAULT_MIN_INTERVAL,
         max_retries: int = DEFAULT_MAX_RETRIES,
         backoff_base: float = DEFAULT_BACKOFF_BASE,
-        client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._client = client or httpx.AsyncClient(
-            headers={"User-Agent": user_agent},
-            follow_redirects=True,
-            timeout=30.0,
-        )
-        self._owns_client = client is None
+        # Tag l.47-65 minus the client= injection branch (l.55-60); the UA is
+        # stored and handed to the seam per request (legacy folded it into
+        # the AsyncClient header defaults).
+        self._user_agent = user_agent
         self._min_interval = min_request_interval
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._last_request_time: float = 0.0
         self._cache: dict[str, tuple[float, Any]] = {}
 
-    async def __aenter__(self) -> "ArchiveClient":
-        return self
-
-    async def __aexit__(self, *exc: object) -> None:
-        await self.aclose()
-
-    async def aclose(self) -> None:
-        if self._owns_client:
-            await self._client.aclose()
-
     def clear_cache(self) -> None:
         self._cache.clear()
 
     # -- Cache helpers -------------------------------------------------------
+    # Verbatim from tag l.80-104 (monotonic, deepcopy on hit, ttl<=0 bypass,
+    # evict-oldest-by-ts over MAX_CACHE_SIZE) -- already sync, zero changes.
 
     def _get_cached(self, key: str, ttl: int) -> Any | None:
         """Return a deep copy of cached data if fresh, else None."""
@@ -105,39 +131,64 @@ class ArchiveClient:
 
     # -- Rate limiting -------------------------------------------------------
 
-    async def _wait_for_rate_limit(self) -> None:
+    def _wait_for_rate_limit(self) -> None:
+        # Tag l.108-113 with asyncio.sleep -> _sleep (time.sleep seam).
         now = time.monotonic()
         elapsed = now - self._last_request_time
         if elapsed < self._min_interval:
-            await asyncio.sleep(self._min_interval - elapsed)
+            _sleep(self._min_interval - elapsed)
         self._last_request_time = time.monotonic()
 
     # -- Core request with retry ---------------------------------------------
 
-    async def _request(
+    def _request(
         self,
         method: str,
         url: str,
         *,
         params: dict[str, Any] | list[tuple[str, Any]] | None = None,
         headers: dict[str, str] | None = None,
-    ) -> httpx.Response:
+    ) -> transport.SeamResponse:
         """Make an HTTP request with rate limiting and 429 retry.
 
-        On 429, retries with exponential backoff (honoring Retry-After header).
-        Raises httpx.HTTPStatusError after max_retries exhausted.
+        Ladder shape EXACTLY as tag l.130-152:
+        - ``for attempt in range(max_retries + 1)`` (4 attempts at default).
+        - Rate-limit wait BEFORE every attempt, including retries (tag l.131).
+        - 429 on the LAST attempt raises urllib.error.HTTPError -- the parity
+          role of legacy's HTTPStatusError (tag l.137-141; also a URLError
+          subclass, so the server handlers' error fold keeps catching it).
+          Message byte-shape ``f"Rate limited after {n} attempts"`` kept
+          (tag l.138): it is folded into ``f"Error: API request failed — {e}"``
+          at handlers and the exhaustion-count is asserted by the ported test.
+        - 429 otherwise: honor Retry-After via float-parse (ValueError ->
+          ``backoff_base * 2**attempt``), else exponential backoff
+          (tag l.142-149); ``_sleep(delay)`` replaces ``asyncio.sleep``
+          (tag l.150); ``continue``.
+        - Non-429 returns the response (tag l.152).
+
+        NO transport-error except here -- tag fact (chain R2 re-verification):
+        legacy NEVER retried transport errors; they propagate (post-T01, as
+        urllib.error.URLError normalized at the seam, R1) to the handlers.
+
+        Header merge: legacy passed ``User-Agent`` once via the AsyncClient
+        defaults with per-request ``headers=`` overriding (tag l.55-59,
+        l.132-134); fetch_raw merges the same way (caller-supplied wins
+        case-insensitively), so the effective UA per request is identical.
         """
+        merged = {"User-Agent": self._user_agent}
+        if headers:
+            merged.update(headers)
         for attempt in range(self._max_retries + 1):
-            await self._wait_for_rate_limit()
-            response = await self._client.request(
-                method, url, params=params, headers=headers
-            )
+            self._wait_for_rate_limit()
+            response = fetch_raw(method, url, params=params, headers=merged)
             if response.status_code == 429:
                 if attempt == self._max_retries:
-                    raise httpx.HTTPStatusError(
-                        f"Rate limited after {self._max_retries + 1} attempts",
-                        request=response.request,
-                        response=response,
+                    hdrs = email.message.Message()
+                    for name, value in response.headers._store.items():
+                        hdrs[name] = value
+                    raise urllib.error.HTTPError(
+                        url, 429, f"Rate limited after {self._max_retries + 1} attempts",
+                        hdrs, None,
                     )
                 retry_after = response.headers.get("Retry-After")
                 if retry_after:
@@ -147,15 +198,15 @@ class ArchiveClient:
                         delay = self._backoff_base * (2**attempt)
                 else:
                     delay = self._backoff_base * (2**attempt)
-                await asyncio.sleep(delay)
+                _sleep(delay)
                 continue
             return response
 
-        raise RuntimeError("Exhausted retries")  # pragma: no cover
+        raise RuntimeError("Exhausted retries")  # pragma: no cover -- dead tail kept from tag l.154 (zero behavior: the loop always returns or raises)
 
     # -- Search methods (Task 3) -----------------------------------------------
 
-    async def search_archive(
+    def search_archive(
         self,
         query: str,
         *,
@@ -208,7 +259,7 @@ class ArchiveClient:
         if cached is not None:
             return cached
 
-        resp = await self._request("GET", f"{IA_BASE}/advancedsearch.php", params=params)
+        resp = self._request("GET", f"{IA_BASE}/advancedsearch.php", params=params)
         resp.raise_for_status()
         data = resp.json()
 
@@ -247,7 +298,7 @@ class ArchiveClient:
         self._set_cached(cache_key, result)
         return result
 
-    async def search_archive_deep(
+    def search_archive_deep(
         self,
         query: str,
         *,
@@ -287,7 +338,7 @@ class ArchiveClient:
         if total_only:
             params.append(("total_only", "true"))
 
-        resp = await self._request(
+        resp = self._request(
             "GET", f"{IA_BASE}/services/search/v1/scrape", params=params
         )
         resp.raise_for_status()
@@ -309,7 +360,7 @@ class ArchiveClient:
 
     # -- Metadata methods (Task 4) ---------------------------------------------
 
-    async def get_item_metadata(
+    def get_item_metadata(
         self, identifier: str, *, include_files: bool = False
     ) -> dict:
         """Fetch item metadata. Raises ValueError for nonexistent items (API returns {})."""
@@ -321,7 +372,7 @@ class ArchiveClient:
         if cached is not None:
             return cached
 
-        resp = await self._request("GET", f"{IA_BASE}/metadata/{quote(identifier, safe='')}")
+        resp = self._request("GET", f"{IA_BASE}/metadata/{quote(identifier, safe='')}")
         resp.raise_for_status()
         data = resp.json()
 
@@ -338,11 +389,11 @@ class ArchiveClient:
         self._set_cached(cache_key, data)
         return copy.deepcopy(data)
 
-    async def list_item_files(
+    def list_item_files(
         self, identifier: str, *, format_filter: str | None = None
     ) -> list[dict]:
         """List files for an item, optionally filtered by format (case-insensitive)."""
-        data = await self.get_item_metadata(identifier, include_files=True)
+        data = self.get_item_metadata(identifier, include_files=True)
         files = data.get("files", [])
         if not isinstance(files, list):
             files = []
@@ -360,9 +411,9 @@ class ArchiveClient:
                 f["download_url"] = f"{IA_BASE}/download/{quote(identifier, safe='')}/{quote(name, safe='')}"
         return files
 
-    async def get_item_reviews(self, identifier: str) -> list[dict]:
+    def get_item_reviews(self, identifier: str) -> list[dict]:
         """Get reviews for an item. Returns [] if no reviews (absent key or null)."""
-        data = await self.get_item_metadata(identifier, include_files=False)
+        data = self.get_item_metadata(identifier, include_files=False)
         reviews = data.get("reviews") or []
         if not isinstance(reviews, list):
             reviews = []
@@ -370,7 +421,7 @@ class ArchiveClient:
 
     # -- Collection methods (Task 5) -------------------------------------------
 
-    async def browse_collection(
+    def browse_collection(
         self,
         collection: str,
         *,
@@ -383,7 +434,7 @@ class ArchiveClient:
             raise ValueError("Collection name must not be empty")
         if sort is None:
             sort = ["downloads desc"]
-        return await self.search_archive(
+        return self.search_archive(
             "",  # empty base query — collection filter is the query
             collection=collection,
             rows=rows,
@@ -391,9 +442,9 @@ class ArchiveClient:
             sort=sort,
         )
 
-    async def get_collection_info(self, identifier: str) -> dict:
+    def get_collection_info(self, identifier: str) -> dict:
         """Get metadata for a collection item. Adds _note if not mediatype=collection."""
-        data = await self.get_item_metadata(identifier, include_files=False)
+        data = self.get_item_metadata(identifier, include_files=False)
         meta = data.get("metadata", {})
         if not isinstance(meta, dict):
             meta = {}
@@ -407,7 +458,7 @@ class ArchiveClient:
 
     # -- Wayback methods (Task 6) ----------------------------------------------
 
-    async def wayback_snapshots(
+    def wayback_snapshots(
         self,
         url: str,
         *,
@@ -495,7 +546,7 @@ class ArchiveClient:
         if fast_latest:
             params.append(("fastLatest", "true"))
 
-        resp = await self._request(
+        resp = self._request(
             "GET", f"{WAYBACK_BASE}/cdx/search/cdx", params=params
         )
         resp.raise_for_status()
@@ -542,7 +593,7 @@ class ArchiveClient:
         self._set_cached(cdx_cache_key, result_list)
         return result_list
 
-    async def wayback_availability(self, url: str) -> dict:
+    def wayback_availability(self, url: str) -> dict:
         """Quick availability check via the Wayback availability API."""
         if not url or not url.strip():
             raise ValueError("URL must not be empty")
@@ -550,7 +601,7 @@ class ArchiveClient:
         cached = self._get_cached(cache_key, TTL_MINUTE)
         if cached is not None:
             return cached
-        resp = await self._request(
+        resp = self._request(
             "GET", f"{IA_BASE}/wayback/available", params={"url": url}
         )
         resp.raise_for_status()
@@ -560,7 +611,7 @@ class ArchiveClient:
         self._set_cached(cache_key, data)
         return data
 
-    async def wayback_fetch(
+    def wayback_fetch(
         self,
         url: str,
         *,
@@ -598,7 +649,7 @@ class ArchiveClient:
             fetch_url = f"{WAYBACK_BASE}/web/{ts}/{url}"
         else:
             fetch_url = f"{WAYBACK_BASE}/web/{url}"
-        resp = await self._request("GET", fetch_url)
+        resp = self._request("GET", fetch_url)
         resp.raise_for_status()
         content = resp.text
 
@@ -631,14 +682,20 @@ class ArchiveClient:
             raise ValueError("Item identifier must not be empty")
         return f"{IA_BASE}/services/img/{quote(identifier, safe='')}"
 
-    async def save_page(
+    def save_page(
         self,
         url: str,
         *,
         access_key: str | None = None,
         secret_key: str | None = None,
     ) -> dict:
-        """Save Page Now (SPN2). Requires IA S3 access/secret keys."""
+        """Save Page Now (SPN2). Requires IA S3 access/secret keys.
+
+        GET-vs-POST mix from the tag preserved: this is the ONLY POST in the
+        client (tag l.655-657) -- unquoted ``/save/{url}`` path,
+        ``Authorization: LOW {ak}:{sk}`` + ``Accept: application/json``
+        headers, no body (the seam sends data=b"" -> Content-Length: 0).
+        """
         if not url or not url.strip():
             raise ValueError("URL must not be empty")
         if not access_key or not secret_key:
@@ -652,7 +709,7 @@ class ArchiveClient:
             "Authorization": f"LOW {access_key}:{secret_key}",
             "Accept": "application/json",
         }
-        resp = await self._request(
+        resp = self._request(
             "POST", f"{WAYBACK_BASE}/save/{url}", headers=headers
         )
         resp.raise_for_status()
@@ -661,7 +718,7 @@ class ArchiveClient:
             raise ValueError("Unexpected API response format")
         return data
 
-    async def save_page_status(self, job_id: str) -> dict:
+    def save_page_status(self, job_id: str) -> dict:
         """Poll the status of a Save Page Now (SPN2) job.
 
         Returns a dict with job status information including whether the
@@ -669,7 +726,7 @@ class ArchiveClient:
         """
         if not job_id or not job_id.strip():
             raise ValueError("Job ID must not be empty")
-        resp = await self._request(
+        resp = self._request(
             "GET", f"{WAYBACK_BASE}/save/status/{quote(job_id, safe='')}"
         )
         resp.raise_for_status()
