@@ -73,8 +73,8 @@ def test_cdx_cache_key_distinguishes_string_filter_from_one_item_list():
         return json_response([["timestamp"], ["20200101"]])
 
     ac = make_mock_client(handler)
-    ac.wayback_snapshots("https://example.com/x", filter_expr="a")
-    ac.wayback_snapshots("https://example.com/x", filter_expr=["a"])
+    ac.wayback_snapshots("example.com", filter_expr="a")
+    ac.wayback_snapshots("example.com", filter_expr=["a"])
 
     assert len(calls) == 2
 
