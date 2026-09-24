@@ -1,4 +1,7 @@
-"""T04 — Stateless 2026-07-28 era suite for internet-archive-mcp (committed RED).
+"""T04 — Stateless 2026-07-28 era suite for internet-archive-mcp.
+
+The suite was originally committed RED against the legacy server; it is now
+GREEN against the stdlib implementation.
 
 Spec source: REFERENCE.md §1–§7 (/home/kimbo/.hermes/plans/mcp-2x-migration/REFERENCE.md)
 plus the chain card _chain.md "Era suite contents (T04; 12 era + 6 regression = 18)".
@@ -6,12 +9,11 @@ transitous-mcp's on-disk tests no longer exist (fleet reset — _chain.md residu
 the §7 binary skeleton is copied VERBATIM from REFERENCE §7's inline code, never from a
 commit in another repo.
 
-TDD status: RED by design until T07 greens this file. The legacy fastmcp server under
-$PYO cannot satisfy the era shape (server/discover answered -32602, initialize answers
-instead of -32601, tools/list carries outputSchema and no era triple, stateless tools/call
-rejected, phantom notifications/message lines break garbage/non-dict/binary tests). The
-exact failed/passed split with per-test reasons is recorded in the commit message; tests
-that legitimately pass under legacy's lenient corners are honest, not tuned.
+Historical TDD evidence: the legacy fastmcp server under $PYO could not satisfy the era
+shape (server/discover answered -32602, initialize answered instead of -32601,
+tools/list carried outputSchema and no era triple, stateless tools/call was rejected,
+and phantom notifications/message lines broke garbage/non-dict/binary tests). The current
+stdlib server passes the same contract plus the added no-id known-method guard.
 
 Zero network: the only tools/call invocations are get_item_thumbnail (pure string URL
 builder — legacy client.py:679-683, sync, no HTTP), wayback_snapshots match_type="domain"
