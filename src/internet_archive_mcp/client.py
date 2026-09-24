@@ -5,15 +5,20 @@ T03 port of the legacy transport client (tag pre-migration/20260914,
 679 lines -- line cites below are to THAT file). Transport internals now go
 through :mod:`.transport` (raw urllib seam, T01); the ONLY behavioral diffs
 from the tag are coroutine->plain calls and the ``_request`` internals.
-Every endpoint method body (URL builds, param lists, cache key strings,
-quote() calls, fav-trim, _warning/_note branches, CDX resume-key parsing,
-2 MB cache cap, truncation-on-read) is copied verbatim from the tag.
+Every endpoint method body (URL builds, param lists, quote() calls, fav-trim,
+_warning/_note branches, CDX resume-key parsing, 2 MB cache cap, truncation-on-read)
+is copied from the tag. Cache keys retain the same component inputs but use
+JSON tuple serialization so delimiter-bearing values cannot collide. Ordinary
+inputs retain the legacy key text for compatibility; ambiguous components use a
+reserved ``structured:`` namespace. The internal key representation is not part
+of the wire contract.
 """
 
 from __future__ import annotations
 
 import copy
 import email.message
+import json
 import math
 import time
 import urllib.error
@@ -101,9 +106,11 @@ class ArchiveClient:
     def clear_cache(self) -> None:
         self._cache.clear()
 
-    # -- Cache helpers -------------------------------------------------------
-    # Verbatim from tag l.80-104 (monotonic, deepcopy on hit, ttl<=0 bypass,
-    # evict-oldest-by-ts over MAX_CACHE_SIZE) -- already sync, zero changes.
+    # Cache helpers -------------------------------------------------------
+    # Tag behavior is preserved (monotonic, deepcopy on hit, ttl<=0 bypass,
+    # evict-oldest-by-ts over MAX_CACHE_SIZE). Ordinary keys retain their legacy
+    # text; delimiter-bearing components use a structured JSON namespace so they
+    # cannot alias one another.
 
     def _get_cached(self, key: str, ttl: int) -> Any | None:
         """Return a deep copy of cached data if fresh, else None."""
@@ -118,8 +125,36 @@ class ArchiveClient:
         return copy.deepcopy(data)
 
     def _set_cached(self, key: str, data: Any) -> None:
-        self._cache[key] = (time.monotonic(), data)
+        self._cache[key] = (time.monotonic(), copy.deepcopy(data))
         self._evict_if_needed()
+
+    @staticmethod
+    def _cache_key(namespace: str, *parts: Any) -> str:
+        """Keep legacy keys for ordinary inputs; escape ambiguous components."""
+        def is_ambiguous(value: Any) -> bool:
+            if value is None:
+                return True
+            if isinstance(value, str):
+                return value == "" or ":" in value or "," in value
+            if isinstance(value, (list, tuple)):
+                return any(is_ambiguous(item) for item in value)
+            return False
+
+        if any(is_ambiguous(part) for part in parts):
+            encoded = json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
+            return f"{namespace}:structured:{encoded}"
+
+        def legacy_part(value: Any) -> str:
+            if isinstance(value, (list, tuple)):
+                return ",".join(str(item) for item in value)
+            return str(value)
+
+        legacy = f"{namespace}:{':'.join(legacy_part(part) for part in parts)}"
+        structured_prefix = f"{namespace}:structured:"
+        if legacy.startswith(structured_prefix):
+            encoded = json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
+            return f"{structured_prefix}{encoded}"
+        return legacy
 
     def _evict_if_needed(self) -> None:
         if len(self._cache) <= MAX_CACHE_SIZE:
@@ -253,8 +288,10 @@ class ArchiveClient:
             for s in sort[:3]:
                 params.append(("sort[]", s))
 
-        sort_key = ",".join(sort[:3]) if sort else ""
-        cache_key = f"search:{q}:{rows}:{page}:{','.join(fields)}:{sort_key}"
+        sort_key = sort[:3] if sort else []
+        cache_key = self._cache_key(
+            "search", q, rows, page, fields, sort_key
+        )
         cached = self._get_cached(cache_key, TTL_HOUR)
         if cached is not None:
             return cached
@@ -367,7 +404,7 @@ class ArchiveClient:
         if not identifier or not identifier.strip():
             raise ValueError("Item identifier must not be empty")
 
-        cache_key = f"metadata:{identifier}:{include_files}"
+        cache_key = self._cache_key("metadata", identifier, include_files)
         cached = self._get_cached(cache_key, TTL_HOUR)
         if cached is not None:
             return cached
@@ -500,17 +537,12 @@ class ArchiveClient:
             raise ValueError("page must be >= 1")
 
         # Build cache key from all parameters that affect the response.
-        filter_key = ""
-        if filter_expr:
-            if isinstance(filter_expr, str):
-                filter_key = filter_expr
-            else:
-                filter_key = ",".join(filter_expr)
-        fields_key = ",".join(fields) if fields else ""
-        cdx_cache_key = (
-            f"cdx:{url}:{match_type}:{from_year}:{to_year}:{limit}:"
-            f"{filter_key}:{collapse}:{fields_key}:{page}:"
-            f"{show_resume_key}:{resume_key}:{newest}:{fast_latest}"
+        filter_key = filter_expr if isinstance(filter_expr, str) else list(filter_expr or [])
+        fields_key = list(fields) if fields else []
+        cdx_cache_key = self._cache_key(
+            "cdx", url, match_type, from_year, to_year, limit,
+            filter_key, collapse, fields_key, page, show_resume_key,
+            resume_key, newest, fast_latest,
         )
         cached = self._get_cached(cdx_cache_key, TTL_HOUR)
         if cached is not None:
@@ -597,7 +629,7 @@ class ArchiveClient:
         """Quick availability check via the Wayback availability API."""
         if not url or not url.strip():
             raise ValueError("URL must not be empty")
-        cache_key = f"availability:{url}"
+        cache_key = self._cache_key("availability", url)
         cached = self._get_cached(cache_key, TTL_MINUTE)
         if cached is not None:
             return cached
@@ -626,7 +658,7 @@ class ArchiveClient:
             raise ValueError("char_limit must be >= 1")
 
         # Cache keyed on url+timestamp+raw (not char_limit — truncate on read).
-        cache_key = f"fetch:{url}:{timestamp}:{raw}"
+        cache_key = self._cache_key("fetch", url, timestamp, raw)
         cached = self._get_cached(cache_key, TTL_HOUR)
         if cached is not None:
             content = cached["content"]

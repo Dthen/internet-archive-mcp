@@ -127,6 +127,27 @@ def test_oserror_maps_to_urlerror_with_chain(monkeypatch):
     assert excinfo.value.reason is boom
 
 
+def test_http_error_body_incomplete_read_falls_back_to_reason(monkeypatch):
+    """An HTTPError body truncated by the peer still becomes a response."""
+    class IncompleteBody:
+        def read(self):
+            raise http.client.IncompleteRead(b"partial", 7)
+
+        def close(self):
+            pass
+
+    err = urllib.error.HTTPError(
+        "https://archive.org/x", 503, "Service Unavailable", None, IncompleteBody()
+    )
+    install(monkeypatch, side_effect=err)
+
+    response = fetch_raw("GET", "https://archive.org/x")
+
+    assert isinstance(response, SeamResponse)
+    assert response.status_code == 503
+    assert response.text == "Service Unavailable"
+
+
 def test_http_error_429_becomes_response_not_urlerror(monkeypatch):
     """HTTPError arm ordered BEFORE the OSError arm (HTTPError ⊂ OSError —
     ordering is the bug gate): the ladder's 429 input must arrive as a
@@ -149,6 +170,26 @@ def test_http_error_429_becomes_response_not_urlerror(monkeypatch):
 
 
 # -- 200 success path --------------------------------------------------------
+
+
+def test_response_body_read_failure_maps_to_urlerror(monkeypatch):
+    """A transport failure while reading a successful response is normalized too."""
+    class ReadFailureResponse:
+        status = 200
+        code = 200
+        headers = email.message.Message()
+
+        def read(self):
+            raise ConnectionResetError("body reset")
+
+        def geturl(self):
+            return "https://archive.org/x"
+
+    install(monkeypatch, response=ReadFailureResponse())
+    with pytest.raises(urllib.error.URLError) as excinfo:
+        fetch_raw("GET", "https://archive.org/x")
+    assert isinstance(excinfo.value.reason, ConnectionResetError)
+    assert excinfo.value.__cause__ is not None
 
 
 def test_success_json_text_and_url(monkeypatch):

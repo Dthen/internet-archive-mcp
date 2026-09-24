@@ -1,7 +1,7 @@
 """T04 — Stateless 2026-07-28 era suite for internet-archive-mcp (committed RED).
 
 Spec source: REFERENCE.md §1–§7 (/home/kimbo/.hermes/plans/mcp-2x-migration/REFERENCE.md)
-plus the chain card _chain.md "Era suite contents (T04; 12 era + 5 regression = 17)".
+plus the chain card _chain.md "Era suite contents (T04; 12 era + 6 regression = 18)".
 transitous-mcp's on-disk tests no longer exist (fleet reset — _chain.md residue fact), so
 the §7 binary skeleton is copied VERBATIM from REFERENCE §7's inline code, never from a
 commit in another repo.
@@ -361,8 +361,21 @@ def test_era_12_tools_call_missing_params_32602():
 
 
 # ===========================================================================
-# REGRESSION TESTS (5) — REFERENCE §1/§7 server-killer guards
+# REGRESSION TESTS (6) — REFERENCE §1/§7 server-killer guards
+# (the known-method notification guard is included)
 # ===========================================================================
+
+def test_known_method_without_id_is_a_notification():
+    """A known method without an id must not produce a response."""
+    rpc = Rpc()
+    try:
+        rpc.send({"jsonrpc": "2.0", "method": "ping"})
+        resp = rpc.request({"jsonrpc": "2.0", "id": 99, "method": "ping"})
+        assert resp["id"] == 99
+        assert resp.get("result") == {}
+    finally:
+        rpc.kill()
+
 
 def test_reg_13_garbage_line_then_valid_discover():
     """⓬ REFERENCE §7: a non-JSON line is skipped, NEVER fatal; the next valid request's

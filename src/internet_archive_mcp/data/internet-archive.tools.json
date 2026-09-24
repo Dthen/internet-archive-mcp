@@ -1,0 +1,875 @@
+[
+  {
+    "name": "search_archive",
+    "description": "Search the Internet Archive catalog using the advanced search API.\n\nReturns paginated results with item identifiers, titles, creators, and\ndownload counts. Supports filtering by media type and collection.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Free-text Lucene query (e.g. \"jazz piano\", \"creator:ellis\")."
+        },
+        "mediatype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Filter by media type (texts, web, movies, audio, data, image, collection, software)."
+        },
+        "collection": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Restrict results to a specific collection identifier."
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Metadata fields to return per result. Defaults to identifier,\ntitle, mediatype, creator, downloads, publicdate, year."
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Up to 3 sort expressions (e.g. [\"downloads desc\", \"year asc\"])."
+        },
+        "rows": {
+          "default": 20,
+          "type": "integer",
+          "description": "Number of results per page (default 20)."
+        },
+        "page": {
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, 1-indexed (default 1)."
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "get_item_metadata",
+    "description": "Get full metadata for an Internet Archive item.\n\nReturns the item's metadata block (title, creator, description, subject,\netc.), server info, and optionally the file listing.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "The unique item identifier (e.g. \"nightofthelivingdead\")."
+        },
+        "include_files": {
+          "default": false,
+          "type": "boolean",
+          "description": "If True, include the files array and files_count."
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "list_item_files",
+    "description": "List all files belonging to an Internet Archive item.\n\nEach file entry includes name, format, size, and other technical metadata.\nOptionally filter by format (case-insensitive).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "The unique item identifier."
+        },
+        "format_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "If provided, only return files whose format matches\nexactly (case-insensitive, e.g. \"VBR MP3\", \"Text PDF\")."
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "get_item_reviews",
+    "description": "Get user reviews for an Internet Archive item.\n\nReturns a list of review objects with reviewer, stars, title, and body.\nReturns an empty list if the item has no reviews.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "The unique item identifier."
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "wayback_snapshots",
+    "description": "Search the Wayback Machine CDX index for snapshots of a URL.\n\nReturns a list of snapshot records with timestamp, original URL, MIME\ntype, status code, and digest. Use match_type to control URL matching.\n\nWhen show_resume_key is True, returns a dict with \"snapshots\" and\n\"resume_key\" keys for paging through large result sets.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The URL to search for (e.g. \"example.com/page\")."
+        },
+        "match_type": {
+          "default": "exact",
+          "type": "string",
+          "description": "One of \"exact\", \"prefix\", \"host\", or \"domain\".\nNote: \"domain\" requires authentication and will return an error."
+        },
+        "from_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Only include snapshots from this year onward."
+        },
+        "to_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Only include snapshots up to this year."
+        },
+        "limit": {
+          "default": 25,
+          "type": "integer",
+          "description": "Maximum number of results (default 25)."
+        },
+        "filter_expr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CDX filter expression(s), e.g. \"statuscode:200\" or\n[\"mimetype:text/html\", \"statuscode:200\"]."
+        },
+        "collapse": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Collapse results by a field, e.g. \"urlkey\" or\n\"timestamp:4\" (group by year)."
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CDX fields to return (e.g. [\"timestamp\", \"original\",\n\"statuscode\"]). Defaults to all fields."
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Result page number (pairs with limit for pagination)."
+        },
+        "show_resume_key": {
+          "default": false,
+          "type": "boolean",
+          "description": "When True, response includes a resume key for\ncontinuing pagination. Returns a dict instead of a list."
+        },
+        "resume_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pass a resume key from a previous response to continue\nfrom where it left off."
+        },
+        "newest": {
+          "default": false,
+          "type": "boolean",
+          "description": "When True, return the newest snapshot first."
+        },
+        "fast_latest": {
+          "default": false,
+          "type": "boolean",
+          "description": "When True, use a faster algorithm for latest snapshots."
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "wayback_availability",
+    "description": "Check if a URL has an archived snapshot in the Wayback Machine.\n\nQuick single-snapshot check — returns the closest available snapshot\ntimestamp and URL. Good for \"is this archived?\" questions.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The URL to check (e.g. \"https://example.com\")."
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "wayback_fetch",
+    "description": "Fetch archived page content from the Wayback Machine.\n\nRetrieves the actual HTML/text content of an archived page. By default\nfetches raw content (no Wayback toolbar injection). Content is truncated\nto char_limit characters.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The original URL to fetch from the archive."
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Wayback timestamp (e.g. \"20200101120000\"). If omitted,\nfetches the most recent snapshot."
+        },
+        "raw": {
+          "default": true,
+          "type": "boolean",
+          "description": "If True (default), fetch raw content without the Wayback\nMachine toolbar. Appends \"id_\" to the timestamp."
+        },
+        "char_limit": {
+          "default": 50000,
+          "type": "integer",
+          "description": "Maximum characters to return (default 50000). Content\nbeyond this limit is truncated."
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "browse_collection",
+    "description": "Browse items within a specific Internet Archive collection.\n\nReturns paginated results sorted by downloads (descending) by default.\nUse this to explore what's in a collection like \"opensource_audio\".",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": "string",
+          "description": "The collection identifier (e.g. \"librivoxaudio\")."
+        },
+        "rows": {
+          "default": 20,
+          "type": "integer",
+          "description": "Number of results per page (default 20)."
+        },
+        "page": {
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, 1-indexed (default 1)."
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Sort expressions. Defaults to [\"downloads desc\"]."
+        }
+      },
+      "required": [
+        "collection"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "get_collection_info",
+    "description": "Get metadata about an Internet Archive collection.\n\nReturns the collection's metadata including title, description, and\nitem count. Adds a note if the identifier is not actually a collection.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "The collection identifier (e.g. \"opensource_audio\")."
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "get_item_thumbnail",
+    "description": "Get the thumbnail image URL for an Internet Archive item.\n\nReturns a URL that redirects to the item's thumbnail image. Can be\nused in markdown image syntax or passed to image tools.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "The unique item identifier."
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "search_archive_deep",
+    "description": "Deep search using the Internet Archive scraping API with cursor paging.\n\nUnlike search_archive (limited to 1000 pages), this supports unlimited\npagination via cursors. Minimum count is 100 per request.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Lucene search query string."
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "List of metadata fields to return (e.g. [\"identifier\", \"title\"])."
+        },
+        "sorts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Sort expressions (e.g. [\"downloads desc\"])."
+        },
+        "count": {
+          "default": 100,
+          "type": "integer",
+          "description": "Results per page, minimum 100 (default 100)."
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Opaque cursor string from a previous response for the\nnext page. Omit for the first page."
+        },
+        "total_only": {
+          "default": false,
+          "type": "boolean",
+          "description": "When True, return only the total count without item\nrecords. Useful for quick cardinality checks."
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "save_page",
+    "description": "Save a URL to the Wayback Machine using Save Page Now (SPN2).\n\nRequires Internet Archive S3 API keys. Keys can be provided as arguments\nor set as environment variables IA_ACCESS_KEY and IA_SECRET_KEY.\nGet keys at https://archive.org/account/s3.php.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The URL to archive."
+        },
+        "access_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IA S3 access key. Falls back to IA_ACCESS_KEY env var."
+        },
+        "secret_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IA S3 secret key. Falls back to IA_SECRET_KEY env var."
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  {
+    "name": "save_page_status",
+    "description": "Check the status of a Save Page Now (SPN2) job.\n\nAfter calling save_page, use the returned job_id to poll for\ncompletion. Returns status information including whether the save\nhas completed and the resulting Wayback URL.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "description": "The job ID returned by save_page."
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  }
+]

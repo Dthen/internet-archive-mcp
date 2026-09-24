@@ -153,6 +153,25 @@ def test_second_call_within_interval_is_delayed() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_search_cache_key_does_not_collide_on_delimiters():
+    """Different structured arguments must not share an ambiguous string key."""
+    calls: list[str] = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return json_response({
+            "response": {"numFound": len(calls), "start": 0, "docs": []}
+        })
+
+    ac = make_mock_client(handler)
+    first = ac.search_archive("x:1", rows=2, page=3, fields=["a"])
+    second = ac.search_archive("x", rows=1, page=2, fields=["3:a"])
+
+    assert first["numFound"] == 1
+    assert second["numFound"] == 2
+    assert len(calls) == 2
+
+
 def test_success_on_first_try_no_retry() -> None:
     call_count = 0
 

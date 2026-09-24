@@ -101,7 +101,7 @@ The client is designed to be a polite, well-behaved consumer of IA APIs:
 
 - **Rate limiter** — minimum 0.5s interval between all outgoing requests
 - **Bounded TTL cache** — in-memory cache with 256-entry cap; search and metadata results cached for 1 hour; oldest entries evicted first
-- **429 retry with backoff** — automatic retry on HTTP 429 with exponential backoff (honors `Retry-After` header), up to 3 attempts
+- **429 retry with backoff** — automatic retry on HTTP 429 with exponential backoff (honors numeric `Retry-After` seconds), up to 3 retries (4 total attempts)
 - **Mandatory User-Agent** — every request carries a descriptive `User-Agent: internet-archive-mcp/0.1.0 (...)` header per IA policy
 
 ## Development
@@ -121,7 +121,8 @@ internet-archive-mcp/
 ├── src/internet_archive_mcp/
 │   ├── __init__.py
 │   ├── client.py      # Synchronous stdlib `urllib` client — all API logic
-│   └── server.py      # Stateless-era stdio server; 13 thin sync handlers
+│   ├── server.py      # Stateless-era stdio server; 13 thin sync handlers
+│   └── data/          # Packaged frozen tool capture
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py

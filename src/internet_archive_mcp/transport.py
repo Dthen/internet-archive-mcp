@@ -145,7 +145,8 @@ class SeamResponse:
         if fp is not None:
             try:
                 body = err.read()
-            except OSError:  # closed/unreadable fp -> msg fallback below
+            except (OSError, http.client.HTTPException):
+                # Closed/unreadable/truncated fp -> reason fallback below.
                 body = b""
             text = (
                 body if isinstance(body, str)
@@ -253,4 +254,12 @@ def fetch_raw(
         # were never retried (429-only, tag-verified); converted errors route through the same
         # single-attempt fold.
         raise urllib.error.URLError(e) from e
-    return SeamResponse.from_urlopen(resp, full_url)
+
+    # Reading the body is part of the network seam too. Keep it inside the same
+    # normalization boundary as urlopen so a mid-stream reset cannot leak raw
+    # ConnectionResetError past the handlers' friendly transport fold.
+    try:
+        return SeamResponse.from_urlopen(resp, full_url)
+    except (TimeoutError, socket.timeout, http.client.HTTPException,
+            ConnectionResetError, OSError) as e:
+        raise urllib.error.URLError(e) from e

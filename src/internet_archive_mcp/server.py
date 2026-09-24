@@ -43,10 +43,10 @@ _client = ArchiveClient()
 # source of the 13 name/description/inputSchema triples; the legacy-framework
 # keys outputSchema and _meta are dropped at projection. Drift is structurally
 # impossible because the golden IS the source — edit the capture, never this
-# projection. Repo-root path via __file__ walk (src/<pkg>/server.py -> parents[2]);
-# the editable install keeps this resolvable from the repo venv (T19 probe gate).
+# projection. The byte-identical capture is shipped as package data so the
+# installed wheel and the editable checkout expose the same 13-tool surface.
 def _load_tools():
-    path = Path(__file__).resolve().parents[2] / "golden" / "internet-archive.tools.json"
+    path = Path(__file__).resolve().parent / "data" / "internet-archive.tools.json"
     if not path.is_file():
         raise RuntimeError(f"golden tools capture missing: {path} — refuse to serve an empty surface")
     tools = json.loads(path.read_text())
@@ -257,6 +257,70 @@ _dispatch = {
 }
 
 
+def _matches_type(value, expected: str) -> bool:
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "null":
+        return value is None
+    if expected == "array":
+        return isinstance(value, list)
+    if expected == "object":
+        return isinstance(value, dict)
+    return False
+
+
+def _validate_value(value, schema, path: str) -> str | None:
+    """Validate the JSON Schema subset used by the frozen tool capture."""
+    if "anyOf" in schema:
+        errors = [
+            _validate_value(value, option, path)
+            for option in schema["anyOf"]
+        ]
+        if any(error is None for error in errors):
+            return None
+        return f"{path} does not match any allowed type"
+    expected = schema.get("type")
+    if expected and not _matches_type(value, expected):
+        return f"{path} must be {expected}"
+    if expected == "array":
+        item_schema = schema.get("items")
+        if item_schema:
+            for index, item in enumerate(value):
+                error = _validate_value(item, item_schema, f"{path}[{index}]")
+                if error:
+                    return error
+    return None
+
+
+def _validate_tool_arguments(name: str, arguments):
+    """Return a tool-level error for arguments outside the frozen schema."""
+    if name not in _dispatch:
+        return None
+    if not isinstance(arguments, dict):
+        return f"{name}: arguments must be an object"
+    schema = next(tool["inputSchema"] for tool in TOOLS if tool["name"] == name)
+    properties = schema.get("properties", {})
+    if schema.get("additionalProperties") is False:
+        unexpected = sorted(set(arguments) - set(properties))
+        if unexpected:
+            names = ", ".join(unexpected)
+            return f"{name}: unexpected parameter(s): {names}"
+    for required in schema.get("required", []):
+        if required not in arguments:
+            return f"{name}: missing required parameter: {required}"
+    for key, value in arguments.items():
+        property_schema = properties.get(key)
+        if property_schema:
+            error = _validate_value(value, property_schema, key)
+            if error:
+                return f"{name}: {error}"
+    return None
+
+
 def handle_call(name, arguments):
     """Dispatch a tools/call by name to its handler (T07 installs the 13).
 
@@ -270,6 +334,9 @@ def handle_call(name, arguments):
     handler = _dispatch.get(name)
     if handler is None:
         return {"error": f"Unknown tool: {name}"}
+    validation_error = _validate_tool_arguments(name, arguments)
+    if validation_error:
+        return {"error": validation_error}
     return handler(arguments)
 
 
@@ -310,6 +377,11 @@ def main():
         rid = req.get("id")                     # str or int; absent ⇒ notification
         method = req.get("method")              # null/42/etc must not crash .startswith below
         if not isinstance(method, str): method = ""   # route as unknown-method
+        if "id" not in req:
+            # JSON-RPC notifications are method-bearing messages without an id.
+            # Consume every such message silently, including known methods; never
+            # emit a synthetic `"id": null` response that breaks correlation.
+            continue
         if method == "server/discover":
             send({"jsonrpc":"2.0","id":rid,"result":era_result({
                 "supportedVersions":[ERA_VERSION],
