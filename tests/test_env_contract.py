@@ -33,10 +33,54 @@ GUIDANCE_MSG = (
     "https://archive.org/account/s3.php"
 )
 
-# Era server spawn constants (same as test_stateless_era.py).
-PROD_PY = "/mnt/HC_Volume_105667182/kimbo/mcp-venvs/internet-archive-mcp/bin/python3"
+# Production spawn constants (PROD_PY is the same pin as test_stateless_era.py).
+#
+# PROD_PY is byte-exact the live Hermes config command for this server
+# (mcp_servers.internet-archive):
+#     /mnt/.../mcp-venvs/internet-archive-mcp-v2/bin/python3
+#         -m internet_archive_mcp.server
+# The unsuffixed sibling (…/mcp-venvs/internet-archive-mcp/) is the PRE-MIGRATION
+# fat venv, kept on purpose as a rollback artifact: it installs httpx, mcp,
+# pydantic and fastmcp and carries package version 0.1.0. Spawning it under a
+# name like PROD_PY makes this file assert nothing about the production
+# interpreter, so the pin stays on -v2 and
+# TestProductionVenvIsolation below keeps it honest.
+PROD_PY = "/mnt/HC_Volume_105667182/kimbo/mcp-venvs/internet-archive-mcp-v2/bin/python3"
 SERVER = "internet_archive_mcp.server"
 READ_TIMEOUT = 5
+
+# Third-party runtime deps the production venv must never be able to import.
+# The migrated package is stdlib-only (pyproject: dependencies = []), so any of
+# these resolving under PROD_PY is a regression — either a package installed
+# into the venv, or a source-level import smuggled back in.
+FORBIDDEN_RUNTIME_MODULES = ("fastmcp", "httpx", "mcp", "pydantic", "requests")
+
+# Stdlib-only probe, written to a tmp file and spawned by PROD_PY. Two distinct
+# questions, deliberately asked separately:
+#   "findable" — importlib can LOCATE the module in this venv (catches a
+#                package installed into it, before any of our code runs);
+#   "resident" — the module is LOADED once the server is imported (catches a
+#                source-level `import httpx` reappearing in the package).
+# Both answer empty for a correctly isolated production venv.
+_ISOLATION_PROBE = '''\
+import importlib.util
+import json
+import sys
+
+forbidden = {forbidden!r}
+
+findable = [name for name in forbidden if importlib.util.find_spec(name) is not None]
+
+import internet_archive_mcp.server  # noqa: F401  -- the code under test
+
+resident = sorted(name for name in forbidden if name in sys.modules)
+
+print(json.dumps({{
+    "executable": sys.executable,
+    "findable": sorted(findable),
+    "resident": resident,
+}}))
+'''
 
 
 def _read_line_with_timeout(f, sec=READ_TIMEOUT):
@@ -179,3 +223,68 @@ class TestEnvContract:
             if p.poll() is None:
                 p.kill()
                 p.wait()
+
+
+class TestProductionVenvIsolation:
+    """The pinned PROD_PY is the production interpreter AND stays dependency-free.
+
+    Guards the migration's whole point. A constant merely NAMED PROD_PY proved
+    nothing while it pointed at the pre-migration fat venv (httpx/mcp/pydantic/
+    fastmcp present), so a regression reintroducing a third-party import would
+    have passed silently. These assertions run inside the pinned interpreter
+    itself, so they hold for the venv that actually serves production.
+    """
+
+    def test_prod_py_matches_live_config_command(self):
+        """PROD_PY is the -v2 production venv, not its pre-migration sibling.
+
+        The config pin is duplicated here as a literal (tests must not import
+        the live Hermes config); this assertion is what keeps the two in sync.
+        """
+        assert PROD_PY.endswith(
+            "mcp-venvs/internet-archive-mcp-v2/bin/python3"
+        ), f"PROD_PY must pin the production -v2 venv, got {PROD_PY}"
+        assert "-v2" in Path(PROD_PY).parent.parent.name
+
+    def test_prod_py_interpreter_exists_and_is_executable(self):
+        """The pin must name a real interpreter — a typo'd path silently skips nothing."""
+        assert Path(PROD_PY).is_file(), f"pinned production interpreter missing: {PROD_PY}"
+        assert os.access(PROD_PY, os.X_OK), f"pinned production interpreter not executable: {PROD_PY}"
+
+    def test_production_venv_imports_no_third_party_runtime_modules(self, tmp_path):
+        """NEGATIVE: the production interpreter exposes no third-party runtime deps.
+
+        Spawns the pinned PROD_PY (never sys.executable) with a stdlib-only
+        probe and asserts BOTH halves of isolation:
+          * findable == []  — none are installed in the production venv;
+          * resident == []  — importing the server pulls none into sys.modules.
+        The second half is what catches a source-level `import httpx` sneaking
+        back in, which the first half alone would miss.
+        """
+        probe = tmp_path / "isolation_probe.py"
+        probe.write_text(_ISOLATION_PROBE.format(forbidden=list(FORBIDDEN_RUNTIME_MODULES)))
+
+        result = subprocess.run(
+            [PROD_PY, str(probe)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert result.returncode == 0, (
+            f"isolation probe failed under {PROD_PY}:\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+
+        report = json.loads(result.stdout)
+        assert report["executable"] == PROD_PY, (
+            f"probe ran under the wrong interpreter: {report['executable']} != {PROD_PY}"
+        )
+        assert report["findable"] == [], (
+            "production venv must not contain third-party runtime modules; "
+            f"found installed: {report['findable']} under {PROD_PY}"
+        )
+        assert report["resident"] == [], (
+            "importing internet_archive_mcp.server under the production venv "
+            f"loaded third-party modules: {report['resident']}"
+        )
