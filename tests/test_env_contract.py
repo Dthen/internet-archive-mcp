@@ -35,9 +35,9 @@ GUIDANCE_MSG = (
 
 # Production spawn constants (PROD_PY is the same pin as test_stateless_era.py).
 #
-# PROD_PY is byte-exact the live Hermes config command for this server
-# (mcp_servers.internet-archive):
-#     /mnt/.../mcp-venvs/internet-archive-mcp-v2/bin/python3
+# PROD_PY is the live Hermes config command for this server
+# (mcp_servers.internet-archive): the -v2 production venv, e.g.
+#     <venv-root>/internet-archive-mcp-v2/bin/python3
 #         -m internet_archive_mcp.server
 # The unsuffixed sibling (…/mcp-venvs/internet-archive-mcp/) is the PRE-MIGRATION
 # fat venv, kept on purpose as a rollback artifact: it installs httpx, mcp,
@@ -45,7 +45,30 @@ GUIDANCE_MSG = (
 # name like PROD_PY makes this file assert nothing about the production
 # interpreter, so the pin stays on -v2 and
 # TestProductionVenvIsolation below keeps it honest.
-PROD_PY = "/mnt/HC_Volume_105667182/kimbo/mcp-venvs/internet-archive-mcp-v2/bin/python3"
+#
+# Resolved per-machine so no absolute host path is committed here. No
+# sys.executable fallback and no skip: the suite interpreter still carries
+# fastmcp 3.4.7, so a fallback would substitute the wrong runtime and make the
+# zero-deps gates vacuous, and a skip would silently replace a real proof with
+# a no-op.
+def _prod_py() -> str:
+    """Resolve the production (v2, zero-dependency) interpreter path."""
+    env = os.environ.get("PROD_PY") or os.environ.get("PROD_PY_INTERNET_ARCHIVE")
+    if env:
+        return env
+    local = Path(__file__).resolve().parent.parent / ".prod_py"  # gitignored, untracked
+    if local.is_file():
+        return local.read_text().strip()
+    raise RuntimeError(
+        "Production interpreter not configured. Set $PROD_PY, or write the path to "
+        f"{local} (gitignored). Tests must not fall back to sys.executable: the suite "
+        "interpreter still carries fastmcp 3.4.7 while the server under test must be the "
+        "zero-dependency v2 interpreter, so that fallback would substitute the wrong "
+        "interpreter and make the zero-deps/stateless gates vacuous."
+    )
+
+
+PROD_PY = _prod_py()
 SERVER = "internet_archive_mcp.server"
 READ_TIMEOUT = 5
 

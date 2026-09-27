@@ -3,8 +3,9 @@
 The suite was originally committed RED against the legacy server; it is now
 GREEN against the stdlib implementation.
 
-Spec source: REFERENCE.md §1–§7 (/home/kimbo/.hermes/plans/mcp-2x-migration/REFERENCE.md)
-plus the chain card _chain.md "Era suite contents (T04; 12 era + 6 regression = 18)".
+Spec source: the migration reference spec for this server (kept out of the
+public repo) plus the chain card _chain.md "Era suite contents (T04; 12 era + 6
+regression = 18)".
 transitous-mcp's on-disk tests no longer exist (fleet reset — _chain.md residue fact), so
 the §7 binary skeleton is copied VERBATIM from REFERENCE §7's inline code, never from a
 commit in another repo.
@@ -36,7 +37,33 @@ SERVER = "internet_archive_mcp.server"
 # stays "internet-archive-mcp/0.1.0" (wire identity — _chain.md version-scheme row:
 # T19 changes PACKAGE versions only). NEVER sys.executable: $PYH only imports this
 # package by accident of its editable-install soup (_chain.md "Era suite contents").
-PROD_PY = "/mnt/HC_Volume_105667182/kimbo/mcp-venvs/internet-archive-mcp-v2/bin/python3"
+#
+# Resolved per-machine so no absolute host path is committed here. No
+# sys.executable fallback: the suite interpreter still carries fastmcp 3.4.7, so
+# falling back to it would substitute the wrong runtime and make the zero-deps
+# gates vacuous. Raises at import rather than skipping — a skip would silently
+# replace a real proof with a no-op.
+REPO = Path(__file__).resolve().parent.parent
+
+
+def _prod_py() -> str:
+    """Resolve the production (v2, zero-dependency) interpreter path."""
+    env = os.environ.get("PROD_PY") or os.environ.get("PROD_PY_INTERNET_ARCHIVE")
+    if env:
+        return env
+    local = REPO / ".prod_py"  # gitignored, untracked, machine-local
+    if local.is_file():
+        return local.read_text().strip()
+    raise RuntimeError(
+        "Production interpreter not configured. Set $PROD_PY, or write the path to "
+        f"{local} (gitignored). Tests must not fall back to sys.executable: the suite "
+        "interpreter still carries fastmcp 3.4.7 while the server under test must be the "
+        "zero-dependency v2 interpreter, so that fallback would substitute the wrong "
+        "interpreter and make the zero-deps/stateless gates vacuous."
+    )
+
+
+PROD_PY = _prod_py()
 
 ERA_VERSION = "2026-07-28"  # REFERENCE §1 pinned era constant
 

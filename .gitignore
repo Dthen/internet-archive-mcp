@@ -8,3 +8,7 @@ build/
 .pytest_cache/
 golden/*
 !golden/*.json
+
+# Machine-local interpreter pointers (tests/tools resolve these; never tracked)
+.prod_py
+.prod_py.old

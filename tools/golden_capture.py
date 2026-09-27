@@ -8,9 +8,11 @@ writes the FULL tools array verbatim to golden/internet-archive.tools.json.
 This is a pre-rewrite characterization tool: it must run under the CURRENT
 production interpreter (3.11 + fastmcp + httpx), never the target venv.
 
-Interpreter selection: argv[1] if given, else env GOLDEN_PYTHON, else the
-default recorded below. Output path is derived from __file__ (repo root =
-parent of tools/), so the script works from any cwd.
+Interpreter selection: argv[1] if given, else env GOLDEN_PYTHON, else
+$PROD_PY_INTERNET_ARCHIVE, else the .prod_py.old pointer file (gitignored).
+default_python() resolves per-machine so no absolute host path is committed
+here. Output path is derived from __file__ (repo root = parent of tools/), so
+the script works from any cwd.
 
 Stdlib only. Every stdout read from the spawned server goes through
 read_line_with_timeout (F9: select-based deadline read — a silent server can
@@ -28,14 +30,36 @@ import select
 import subprocess
 import sys
 
-DEFAULT_PYTHON = (
-    "/mnt/HC_Volume_105667182/kimbo/mcp-venvs/internet-archive-mcp/bin/python3"
-)
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_POINTER = os.path.join(REPO_ROOT, ".prod_py.old")  # gitignored, untracked
 GOLDEN_PATH = os.path.join(REPO_ROOT, "golden", "internet-archive.tools.json")
 EXPECTED_TOOL_COUNT = 13
 LINE_TIMEOUT = 20.0  # per stdout line; total runtime is bounded by `timeout 30`
 TERM_TIMEOUT = 10.0  # final terminate-and-reap bound
+
+
+def default_python():
+    """Resolve the PRE-MIGRATION (fastmcp + httpx) capture interpreter.
+
+    Lazy, not a module constant, so an explicit argv[1] or $GOLDEN_PYTHON wins
+    without this raising on import. Deliberately separate from the suite's
+    $PROD_PY: this tool characterizes the OLD server, so it must not silently
+    follow the production pin over to the zero-dependency v2 venv.
+    """
+    env = os.environ.get("PROD_PY_INTERNET_ARCHIVE")
+    if env:
+        return env
+    if os.path.isfile(_POINTER):
+        with open(_POINTER) as fh:
+            resolved = fh.read().strip()
+        if resolved:
+            return resolved
+    raise CaptureError(
+        f"Capture interpreter not configured. Pass it as argv[1], set $GOLDEN_PYTHON, or "
+        f"write the pre-migration interpreter path to {_POINTER} (gitignored). No "
+        "sys.executable fallback: the golden fixture must be captured from the real legacy "
+        "fastmcp interpreter, not whichever interpreter ran this script."
+    )
 
 
 class CaptureError(Exception):
@@ -108,7 +132,7 @@ def main(argv):
     python = (
         argv[1]
         if len(argv) > 1
-        else os.environ.get("GOLDEN_PYTHON", DEFAULT_PYTHON)
+        else os.environ.get("GOLDEN_PYTHON") or default_python()
     )
     if not os.path.exists(python):
         raise CaptureError(f"interpreter not found: {python}")
